@@ -1,6 +1,21 @@
 [package]
-name = "rust"
-version = "0.1.0"
-edition = "2024"
+name = "bitcoinkernel"
+version = "0.0.1"
+edition = "2021"
+rust-version =  "1.71.0"
 
 [dependencies]
+bitcoinkernel-sys = { path = "bitcoinkernel-sys", version = "0.0.1" }
+
+[dev-dependencies]
+hex = "0.4"
+env_logger = "0.11"
+log = "0.4"
+bitcoin = "0.31"
+tempdir = "0.3"
+secp256k1 = "0.28"
+
+[workspace]
+members = [
+    "bitcoinkernel-sys"
+]

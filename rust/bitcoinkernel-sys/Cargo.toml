@@ -1,0 +1,52 @@
+[package]
+name = "bitcoinkernel-sys"
+version = "0.0.1"
+edition = "2021"
+links = "libbitcoinkernel.a"
+build = "build.rs"
+exclude = [
+    "../../bitcoinkernel/bitcoin/.github",
+    "../../bitcoinkernel/bitcoin/.tx",
+    "../../bitcoinkernel/bitcoin/ci",
+    "../../bitcoinkernel/bitcoin/contrib/asmap",
+    "../../bitcoinkernel/bitcoin/contrib/completions",
+    "../../bitcoinkernel/bitcoin/contrib/debian",
+    "../../bitcoinkernel/bitcoin/contrib/guix",
+    "../../bitcoinkernel/bitcoin/contrib/init",
+    "../../bitcoinkernel/bitcoin/contrib/linearize",
+    "../../bitcoinkernel/bitcoin/contrib/macdeploy",
+    "../../bitcoinkernel/bitcoin/contrib/message-capture",
+    "../../bitcoinkernel/bitcoin/contrib/qos",
+    "../../bitcoinkernel/bitcoin/contrib/seeds",
+    "../../bitcoinkernel/bitcoin/contrib/shell",
+    "../../bitcoinkernel/bitcoin/contrib/signet",
+    "../../bitcoinkernel/bitcoin/contrib/testgen",
+    "../../bitcoinkernel/bitcoin/contrib/tracing",
+    "../../bitcoinkernel/bitcoin/contrib/verify-binaries",
+    "../../bitcoinkernel/bitcoin/contrib/verify-commits",
+    "../../bitcoinkernel/bitcoin/depends",
+    "../../bitcoinkernel/bitcoin/doc/*.md",
+    "../../bitcoinkernel/bitcoin/doc/man",
+    "../../bitcoinkernel/bitcoin/doc/design",
+    "../../bitcoinkernel/bitcoin/share",
+    "../../bitcoinkernel/bitcoin/src/bench",
+    "../../bitcoinkernel/bitcoin/src/ipc",
+    "../../bitcoinkernel/bitcoin/test/functional",
+    "../../bitcoinkernel/bitcoin/test/fuzz",
+    "../../bitcoinkernel/bitcoin/test/lint",
+    "../../bitcoinkernel/bitcoin/test/sanitizer_suppresions",
+    "../../bitcoinkernel/bitcoin/test/util",
+    "../../bitcoinkernel/bitcoin/share",
+    "../../bitcoinkernel/bitcoin/src/qt",
+    "../../bitcoinkernel/bitcoin/src/bench",
+    "../../bitcoinkernel/bitcoin/src/wallet",
+]
+publish = true
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+cc = "1.0"
+pkg-config = "0.3"
+bindgen = "0.71"
