@@ -11,9 +11,7 @@ bitcoinkernel-sys = { path = "bitcoinkernel-sys", version = "0.0.1" }
 hex = "0.4"
 env_logger = "0.11"
 log = "0.4"
-bitcoin = "0.31"
 tempdir = "0.3"
-secp256k1 = "0.28"
 
 [workspace]
 members = [
