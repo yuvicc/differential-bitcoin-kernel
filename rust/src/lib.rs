@@ -75,6 +75,16 @@ pub struct UnownedBlock {
     inner: NonNull<kernel_BlockPointer>,
 }
 
+impl UnownedBlock {
+    fn new(block: NonNull<kernel_BlockPointer>) -> UnownedBlock{
+        UnownedBlock { inner: block }
+    }
+    
+    pub fn get_hash() {
+        
+    }
+}
+
 /// Struct for Block validation state
 pub struct BlockValidationState {
     
