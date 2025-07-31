@@ -48,8 +48,21 @@ impl Drop for TransactionOutput {
 }
 
 /// Struct for logger operations
-pub struct Logger {
-    
+pub struct Logger<T> {
+    log: T,
+    inner: NonNull<kernel_LoggingConnection>
+}
+
+impl<T> Drop for Logger<T> {
+    fn drop(&mut self) {
+      unsafe { kernel_logging_connection_destroy(self.inner.as_ptr()); }  
+    }
+}
+
+pub fn disable_logging() {
+    unsafe {
+        kernel_disable_logging();
+    }
 }
 
 /// Struct for kernel notifications
@@ -70,6 +83,24 @@ pub struct BlockValidationState {
 /// Struct for validation interface
 pub struct ValidationInterface {
     
+}
+
+pub enum ValidationMode {
+    VALIDATION_STATE_VALID = 0,
+    VALIDATION_STATE_INVALID,
+    VALIDATION_STATE_ERROR,
+}
+
+pub enum BlockValidationResult {
+    BLOCK_RESULT_UNSET = 0,
+    BLOCK_CONSENSUS,
+    BLOCK_CACHED_INVALID,
+    BLOCK_INVALID_HEADER,
+    BLOCK_MUTATED,
+    BLOCK_MISSING_PREV,
+    BLOCK_INVALID_PREV,
+    BLOCK_TIME_FUTURE,
+    BLOCK_HEADER_LOW_WORK,
 }
 
 

@@ -1,4 +1,7 @@
 /rust/target
 
+/java/.project
+/java/.settings
+/java/.gradle
 
 /cpp/build
