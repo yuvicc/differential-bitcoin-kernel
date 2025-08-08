@@ -2,26 +2,39 @@ package org.bitcoinkernel;
 
 import static org.bitcoinkernel.BitcoinKernelBindings.*
 
-public class BitcoinKernel {
+public class BitcoinKernel implements AutoCloseable {
     
+    
+    @override
+    public void close(){}
 }
 
-public class ChainstateManager {
+public class ChainstateManager implements AutoCloseable {
     
+    @override
+    public void close(){}
 }
 
-public class ContextManager {
+public class ContextManager implements AutoCloseable {
     
+    @override
+    public void close(){}
 }
 
-public class Logger {
+public class Logger implements AutoCloseable {
     
+    @override
+    public void close(){}
 }
 
-public class NotificationManager {
+public class NotificationManager implements AutoCloseable {
     
+    @override
+    public void close(){}
 }
 
-public class KernelUtil {
+public class KernelUtil implements AutoCloseable {
     
+    @override
+    public void close(){}
 }
