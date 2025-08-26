@@ -30,7 +30,7 @@ void BanMan::LoadBanlist()
 {
     LOCK(m_banned_mutex);
 
-    if (m_client_interface) m_client_interface->InitMessage(_("Loading banlist…").translated);
+    if (m_client_interface) m_client_interface->InitMessage(_("Loading banlist…"));
 
     const auto start{SteadyClock::now()};
     if (m_ban_db.Read(m_banned)) {
@@ -39,7 +39,7 @@ void BanMan::LoadBanlist()
         LogDebug(BCLog::NET, "Loaded %d banned node addresses/subnets  %dms\n", m_banned.size(),
                  Ticks<std::chrono::milliseconds>(SteadyClock::now() - start));
     } else {
-        LogPrintf("Recreating the banlist database\n");
+        LogInfo("Recreating the banlist database");
         m_banned = {};
         m_is_dirty = true;
     }

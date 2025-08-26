@@ -42,6 +42,7 @@ static bool operator==(const CBanEntry& lhs, const CBanEntry& rhs)
 
 FUZZ_TARGET(banman, .init = initialize_banman)
 {
+    SeedRandomStateForTest(SeedRand::ZEROS);
     FuzzedDataProvider fuzzed_data_provider{buffer.data(), buffer.size()};
     SetMockTime(ConsumeTime(fuzzed_data_provider));
     fs::path banlist_file = gArgs.GetDataDirNet() / "fuzzed_banlist";
@@ -116,6 +117,9 @@ FUZZ_TARGET(banman, .init = initialize_banman)
                 },
                 [&] {
                     ban_man.Discourage(ConsumeNetAddr(fuzzed_data_provider));
+                },
+                [&] {
+                    ban_man.IsDiscouraged(ConsumeNetAddr(fuzzed_data_provider));
                 });
         }
         if (!force_read_and_write_to_err) {

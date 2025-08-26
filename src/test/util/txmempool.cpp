@@ -122,17 +122,17 @@ std::optional<std::string> CheckPackageMempoolAcceptResult(const Package& txns,
         if (mempool) {
             // The tx by txid should be in the mempool iff the result was not INVALID.
             const bool txid_in_mempool{atmp_result.m_result_type != MempoolAcceptResult::ResultType::INVALID};
-            if (mempool->exists(GenTxid::Txid(tx->GetHash())) != txid_in_mempool) {
+            if (mempool->exists(tx->GetHash()) != txid_in_mempool) {
                 return strprintf("tx %s should %sbe in mempool", wtxid.ToString(), txid_in_mempool ? "" : "not ");
             }
             // Additionally, if the result was DIFFERENT_WITNESS, we shouldn't be able to find the tx in mempool by wtxid.
             if (tx->HasWitness() && atmp_result.m_result_type == MempoolAcceptResult::ResultType::DIFFERENT_WITNESS) {
-                if (mempool->exists(GenTxid::Wtxid(wtxid))) {
+                if (mempool->exists(wtxid)) {
                     return strprintf("wtxid %s should not be in mempool", wtxid.ToString());
                 }
             }
             for (const auto& tx_ref : atmp_result.m_replaced_transactions) {
-                if (mempool->exists(GenTxid::Txid(tx_ref->GetHash()))) {
+                if (mempool->exists(tx_ref->GetHash())) {
                     return strprintf("tx %s should not be in mempool as it was replaced", tx_ref->GetWitnessHash().ToString());
                 }
             }
@@ -141,24 +141,13 @@ std::optional<std::string> CheckPackageMempoolAcceptResult(const Package& txns,
     return std::nullopt;
 }
 
-std::vector<uint32_t> GetDustIndexes(const CTransactionRef& tx_ref, CFeeRate dust_relay_rate)
-{
-    std::vector<uint32_t> dust_indexes;
-    for (size_t i = 0; i < tx_ref->vout.size(); ++i) {
-        const auto& output = tx_ref->vout[i];
-        if (IsDust(output, dust_relay_rate)) dust_indexes.push_back(i);
-    }
-
-    return dust_indexes;
-}
-
 void CheckMempoolEphemeralInvariants(const CTxMemPool& tx_pool)
 {
     LOCK(tx_pool.cs);
     for (const auto& tx_info : tx_pool.infoAll()) {
         const auto& entry = *Assert(tx_pool.GetEntry(tx_info.tx->GetHash()));
 
-        std::vector<uint32_t> dust_indexes = GetDustIndexes(tx_info.tx, tx_pool.m_opts.dust_relay_feerate);
+        std::vector<uint32_t> dust_indexes = GetDust(*tx_info.tx, tx_pool.m_opts.dust_relay_feerate);
 
         Assert(dust_indexes.size() < 2);
 
@@ -218,4 +207,14 @@ void CheckMempoolTRUCInvariants(const CTxMemPool& tx_pool)
             }
         }
     }
+}
+
+void AddToMempool(CTxMemPool& tx_pool, const CTxMemPoolEntry& entry)
+{
+    LOCK2(cs_main, tx_pool.cs);
+    auto changeset = tx_pool.GetChangeSet();
+    changeset->StageAddition(entry.GetSharedTx(), entry.GetFee(),
+            entry.GetTime().count(), entry.GetHeight(), entry.GetSequence(),
+            entry.GetSpendsCoinbase(), entry.GetSigOpCost(), entry.GetLockPoints());
+    changeset->Apply();
 }

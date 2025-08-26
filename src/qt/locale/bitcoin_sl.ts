@@ -94,6 +94,14 @@ Podpisovanje je možno le s podedovanimi ("legacy") naslovi.</translation>
         <translation type="unfinished">Poskus shranjevanja seznama naslovov v %1 je spodletel. Prosimo, poskusite znova.</translation>
     </message>
     <message>
+        <source>Sending addresses - %1</source>
+        <translation type="unfinished">Naslovi za pošiljanje - %1</translation>
+    </message>
+    <message>
+        <source>Receiving addresses - %1</source>
+        <translation type="unfinished">Naslovi za prejemanje - %1</translation>
+    </message>
+    <message>
         <source>Exporting Failed</source>
         <translation type="unfinished">Izvoz je spodletel.</translation>
     </message>
@@ -178,6 +186,10 @@ Podpisovanje je možno le s podedovanimi ("legacy") naslovi.</translation>
     <message>
         <source>Continue</source>
         <translation type="unfinished">Nadaljuj</translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation type="unfinished">Nazaj</translation>
     </message>
     <message>
         <source>Remember that encrypting your wallet cannot fully protect your bitcoins from being stolen by malware infecting your computer.</source>
@@ -293,6 +305,10 @@ Podpisovanje je možno le s podedovanimi ("legacy") naslovi.</translation>
     <message>
         <source>unknown</source>
         <translation type="unfinished">neznano</translation>
+    </message>
+    <message>
+        <source>Custom…</source>
+        <translation type="unfinished">Poljubno...</translation>
     </message>
     <message>
         <source>Amount</source>
@@ -659,6 +675,14 @@ Podpisovanje je možno le s podedovanimi ("legacy") naslovi.</translation>
         <translation type="unfinished">Zapri vse denarnice</translation>
     </message>
     <message>
+        <source>Migrate Wallet</source>
+        <translation type="unfinished">Migriranje denarnice</translation>
+    </message>
+    <message>
+        <source>Migrate a wallet</source>
+        <translation type="unfinished">Migriranje denarnice</translation>
+    </message>
+    <message>
         <source>Show the %1 help message to get a list with possible Bitcoin command-line options</source>
         <translation type="unfinished">Pokaži %1 sporočilo za pomoč s seznamom vseh možnosti v ukazni vrstici</translation>
     </message>
@@ -755,6 +779,10 @@ Podpisovanje je možno le s podedovanimi ("legacy") naslovi.</translation>
     <message>
         <source>Error creating wallet</source>
         <translation type="unfinished">Napaka pri ustvarjanju denarnice</translation>
+    </message>
+    <message>
+        <source>Cannot create new wallet, the software was compiled without sqlite support (required for descriptor wallets)</source>
+        <translation type="unfinished">Ne morem ustvariti nove datoteke. Programska oprema je bila prevedena brez podpore za sqlite, ki je potrebna za denarnice z deskriptorji.</translation>
     </message>
     <message>
         <source>Error: %1</source>
@@ -1018,6 +1046,37 @@ Podpisovanje je možno le s podedovanimi ("legacy") naslovi.</translation>
     </message>
 </context>
 <context>
+    <name>MigrateWalletActivity</name>
+    <message>
+        <source>Migrate wallet</source>
+        <translation type="unfinished">Migriraj denarnico</translation>
+    </message>
+    <message>
+        <source>Are you sure you wish to migrate the wallet &lt;i&gt;%1&lt;/i&gt;?</source>
+        <translation type="unfinished">Ali ste prepričani, da želite migrirati denarnico &lt;i&gt;%1&lt;/i&gt;?</translation>
+    </message>
+    <message>
+        <source>Migrate Wallet</source>
+        <translation type="unfinished">Migriranje denarnice</translation>
+    </message>
+    <message>
+        <source>Migrating Wallet &lt;b&gt;%1&lt;/b&gt;…</source>
+        <translation type="unfinished">Migriranje denarnice &lt;b&gt;%1&lt;/b&gt;...</translation>
+    </message>
+    <message>
+        <source>The wallet '%1' was migrated successfully.</source>
+        <translation type="unfinished">Denarnica '%1' migrirana uspešno.</translation>
+    </message>
+    <message>
+        <source>Migration failed</source>
+        <translation type="unfinished">Migracija neuspešna</translation>
+    </message>
+    <message>
+        <source>Migration Successful</source>
+        <translation type="unfinished">Migracija uspešna</translation>
+    </message>
+</context>
+<context>
     <name>OpenWalletActivity</name>
     <message>
         <source>Open wallet failed</source>
@@ -1094,6 +1153,14 @@ Podpisovanje je možno le s podedovanimi ("legacy") naslovi.</translation>
     <message>
         <source>Create Wallet</source>
         <translation type="unfinished">Ustvari denarnico</translation>
+    </message>
+    <message>
+        <source>You are one step away from creating your new wallet!</source>
+        <translation type="unfinished">Le še en korak in vaša nova denarnica bo ustvarjena!</translation>
+    </message>
+    <message>
+        <source>Please provide a name and, if desired, enable any advanced options</source>
+        <translation type="unfinished">Prosimo, vpišite ime in po želji izberite dodatne možnosti.</translation>
     </message>
     <message>
         <source>Wallet Name</source>
@@ -1455,6 +1522,11 @@ Podpisovanje je možno le s podedovanimi ("legacy") naslovi.</translation>
         <translation type="unfinished">Obrezovanje močno zniža potrebo po prostoru za shranjevanje transakcij. Še vedno pa se bodo v celoti preverjali vsi bloki. Če to nastavitev odstranite, bo potrebno ponovno prenesti celotno verigo blokov.</translation>
     </message>
     <message>
+        <source>Maximum database cache size. Make sure you have enough RAM. A larger cache can contribute to faster sync, after which the benefit is less pronounced for most use cases. Lowering the cache size will reduce memory usage. Unused mempool memory is shared for this cache.</source>
+        <extracomment>Tooltip text for Options window setting that sets the size of the database cache. Explains the corresponding effects of increasing/decreasing this value.</extracomment>
+        <translation type="unfinished">Največja dovoljena velikost predpomnilnika podatkovne baze. Imeti morate dovolj velik delovni pomnilnik (RAM). Povečanje predpomnilnika lahko prispeva k hitrejši začetni sinhronizaciji, kasneje pa večinoma manj pomaga. Znižanje velikosti predpomnilnika bo zmanjšalo porabo pomnilnika. Za ta predpomnilnik se uporablja tudi neporabljeni predpomnilnik za transakcije.</translation>
+    </message>
+    <message>
         <source>Size of &amp;database cache</source>
         <translation type="unfinished">Velikost &amp;predpomnilnika podatkovne baze:</translation>
     </message>
@@ -1465,6 +1537,14 @@ Podpisovanje je možno le s podedovanimi ("legacy") naslovi.</translation>
     <message>
         <source>Full path to a %1 compatible script (e.g. C:\Downloads\hwi.exe or /Users/you/Downloads/hwi.py). Beware: malware can steal your coins!</source>
         <translation type="unfinished">Polna pot do skripte, združljive z %1 (n.pr. C:\Downloads\hwi.exe ali /Users/you/Downloads/hwi.py). Pozor: zlonamerna programska oprema vam lahko ukrade kovance!</translation>
+    </message>
+    <message>
+        <source>Automatically open the Bitcoin client port on the router. This only works when your router supports PCP or NAT-PMP and it is enabled. The external port could be random.</source>
+        <translation type="unfinished">Samodejno odpiranje vrat (port) za bitcoin-odjemalec na usmerjevalniku. To deluje le, če usmerjevalnik podpira PCP ali NAT-PMP in je ta funkcija na usmerjevalniku vklopljena. Zunanja številka vrat je lahko naključna.</translation>
+    </message>
+    <message>
+        <source>Map port using PCP or NA&amp;T-PMP</source>
+        <translation type="unfinished">Preslikaj vrata z uporabo PCP ali NA&amp;T-PMP</translation>
     </message>
     <message>
         <source>IP address of the proxy (e.g. IPv4: 127.0.0.1 / IPv6: ::1)</source>
@@ -1509,11 +1589,6 @@ Podpisovanje je možno le s podedovanimi ("legacy") naslovi.</translation>
     <message>
         <source>Reverting this setting requires re-downloading the entire blockchain.</source>
         <translation type="unfinished">Če spremenite to nastavitev, boste morali ponovno naložiti celotno verigo blokov.</translation>
-    </message>
-    <message>
-        <source>Maximum database cache size. A larger cache can contribute to faster sync, after which the benefit is less pronounced for most use cases. Lowering the cache size will reduce memory usage. Unused mempool memory is shared for this cache.</source>
-        <extracomment>Tooltip text for Options window setting that sets the size of the database cache. Explains the corresponding effects of increasing/decreasing this value.</extracomment>
-        <translation type="unfinished">Največja dovoljena vrednost za predpomnilnik podatkovne baze. Povečanje predpomnilnika lahko prispeva k hitrejši začetni sinhronizaciji, kasneje pa večinoma manj pomaga. Znižanje velikosti predpomnilnika bo zmanjšalo porabo pomnilnika. Za ta predpomnilnik se uporablja tudi neporabljeni predpomnilnik za transakcije.</translation>
     </message>
     <message>
         <source>Set the number of script verification threads. Negative values correspond to the number of cores you want to leave free to the system.</source>
@@ -1581,22 +1656,6 @@ Podpisovanje je možno le s podedovanimi ("legacy") naslovi.</translation>
     <message>
         <source>&amp;External signer script path</source>
         <translation type="unfinished">&amp;Pot do zunanjega podpisnika</translation>
-    </message>
-    <message>
-        <source>Automatically open the Bitcoin client port on the router. This only works when your router supports UPnP and it is enabled.</source>
-        <translation type="unfinished">Samodejno odpiranje vrat za bitcoin-odjemalec na usmerjevalniku (routerju). To deluje le, če usmerjevalnik podpira UPnP in je ta funkcija na usmerjevalniku omogočena.</translation>
-    </message>
-    <message>
-        <source>Map port using &amp;UPnP</source>
-        <translation type="unfinished">Preslikaj vrata z uporabo &amp;UPnP</translation>
-    </message>
-    <message>
-        <source>Automatically open the Bitcoin client port on the router. This only works when your router supports NAT-PMP and it is enabled. The external port could be random.</source>
-        <translation type="unfinished">Samodejno odpiranje vrat za bitcoin-odjemalec na usmerjevalniku. To deluje le, če usmerjevalnik podpira NAT-PMP in je ta funkcija na usmerjevalniku omogočena. Zunanja številka vrat je lahko naključna.</translation>
-    </message>
-    <message>
-        <source>Map port using NA&amp;T-PMP</source>
-        <translation type="unfinished">Preslikaj vrata z uporabo NA&amp;T-PMP</translation>
     </message>
     <message>
         <source>Accept connections from outside.</source>
@@ -2169,6 +2228,14 @@ Svetujemo, da prodajalca prosite, naj vam priskrbi URI na podlagi BIP21.</transl
         <translation type="unfinished">Število povezav</translation>
     </message>
     <message>
+        <source>Local Addresses</source>
+        <translation type="unfinished">Lokalni naslovi</translation>
+    </message>
+    <message>
+        <source>Network addresses that your Bitcoin node is currently using to communicate with other nodes.</source>
+        <translation type="unfinished">Omrežni naslovi, ki jih vaše vozlišče trenutno uporablja za komunikacijo z drugimi vozlišči.</translation>
+    </message>
+    <message>
         <source>Block chain</source>
         <translation type="unfinished">Veriga blokov</translation>
     </message>
@@ -2215,6 +2282,18 @@ Svetujemo, da prodajalca prosite, naj vam priskrbi URI na podlagi BIP21.</transl
     <message>
         <source>Select a peer to view detailed information.</source>
         <translation type="unfinished">Izberite soležnika, o katerem si želite ogledati podrobnejše informacije.</translation>
+    </message>
+    <message>
+        <source>Hide Peers Detail</source>
+        <translation type="unfinished">Skrij podrobnosti Soležnikov</translation>
+    </message>
+    <message>
+        <source>The transport layer version: %1</source>
+        <translation type="unfinished">Verzija prenosnega sloja: %1</translation>
+    </message>
+    <message>
+        <source>Session ID</source>
+        <translation type="unfinished">ID seje</translation>
     </message>
     <message>
         <source>Version</source>
@@ -2502,6 +2581,10 @@ Svetujemo, da prodajalca prosite, naj vam priskrbi URI na podlagi BIP21.</transl
     <message>
         <source>Executing command without any wallet</source>
         <translation type="unfinished">Izvajam ukaz brez denarnice</translation>
+    </message>
+    <message>
+        <source>Node window - [%1]</source>
+        <translation type="unfinished">Okno vozlišča - [%1]</translation>
     </message>
     <message>
         <source>Executing command using "%1" wallet</source>
@@ -3867,6 +3950,10 @@ Za odpiranje denarnice kliknite Datoteka &gt; Odpri denarnico
         <translation type="unfinished">DPBT kopirana</translation>
     </message>
     <message>
+        <source>Fee-bump PSBT copied to clipboard</source>
+        <translation type="unfinished">DPBT z višjo provizijo kopirana v odložišče.</translation>
+    </message>
+    <message>
         <source>Can't sign transaction.</source>
         <translation type="unfinished">Ne morem podpisati transakcije.</translation>
     </message>
@@ -3932,10 +4019,6 @@ Za odpiranje denarnice kliknite Datoteka &gt; Odpri denarnico
     <message>
         <source>Cannot downgrade wallet from version %i to version %i. Wallet version unchanged.</source>
         <translation type="unfinished">Različice denarnice ne morem znižati z %i na %i. Različica denarnice ostaja nespremenjena.</translation>
-    </message>
-    <message>
-        <source>Cannot obtain a lock on data directory %s. %s is probably already running.</source>
-        <translation type="unfinished">Ne morem zakleniti podatkovne mape %s. %s je verjetno že zagnan.</translation>
     </message>
     <message>
         <source>Cannot upgrade a non HD split wallet from version %i to version %i without upgrading to support pre-split keypool. Please use version %i or no version specified.</source>
@@ -4106,10 +4189,6 @@ Za odpiranje denarnice kliknite Datoteka &gt; Odpri denarnico
         <translation type="unfinished">Nastavitev -peerblockfilters ni veljavna brez nastavitve -blockfilterindex.</translation>
     </message>
     <message>
-        <source>Cannot write to data directory '%s'; check permissions.</source>
-        <translation type="unfinished">Nimam dostopa za pisanje v podatkovni mapi '%s'; preveri dovoljenja.</translation>
-    </message>
-    <message>
         <source>Cannot provide specific connections and have addrman find outgoing connections at the same time.</source>
         <translation type="unfinished">Nezdružljivi nastavitvi: navedene so specifične povezave in hkrati se uporablja addrman za iskanje izhodnih povezav.</translation>
     </message>
@@ -4172,10 +4251,6 @@ Obnovitev varnostne kopije denarnice ni bila mogoča.</translation>
     <message>
         <source>Disk space is too low!</source>
         <translation type="unfinished">Prostora na disku je premalo!</translation>
-    </message>
-    <message>
-        <source>Do you want to rebuild the block database now?</source>
-        <translation type="unfinished">Želite zdaj obnoviti podatkovno bazo blokov?</translation>
     </message>
     <message>
         <source>Done loading</source>
@@ -4358,6 +4433,10 @@ Obnovitev varnostne kopije denarnice ni bila mogoča.</translation>
         <translation type="unfinished">Neveljavna pooblastila P2P: '%s'</translation>
     </message>
     <message>
+        <source>Invalid amount for %s=&lt;amount&gt;: '%s'</source>
+        <translation type="unfinished">Neveljaven znesek za %s=&lt;amount&gt;:'%s'</translation>
+    </message>
+    <message>
         <source>Invalid amount for -%s=&lt;amount&gt;: '%s'</source>
         <translation type="unfinished">Neveljavna vrednost za -%s=&lt;amount&gt;: '%s'</translation>
     </message>
@@ -4396,10 +4475,6 @@ Obnovitev varnostne kopije denarnice ni bila mogoča.</translation>
     <message>
         <source>No addresses available</source>
         <translation type="unfinished">Noben naslov ni na voljo</translation>
-    </message>
-    <message>
-        <source>Not enough file descriptors available.</source>
-        <translation type="unfinished">Na voljo ni dovolj deskriptorjev datotek.</translation>
     </message>
     <message>
         <source>Prune cannot be configured with a negative value.</source>
@@ -4584,6 +4659,10 @@ Obnovitev varnostne kopije denarnice ni bila mogoča.</translation>
     <message>
         <source>Unsupported logging category %s=%s.</source>
         <translation type="unfinished">Nepodprta kategorija beleženja %s=%s.</translation>
+    </message>
+    <message>
+        <source>Do you want to rebuild the databases now?</source>
+        <translation type="unfinished">Želite zdaj ponovno zgraditi baze podatkov?</translation>
     </message>
     <message>
         <source>User Agent comment (%s) contains unsafe characters.</source>

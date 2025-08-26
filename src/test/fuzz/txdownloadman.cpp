@@ -18,6 +18,7 @@
 #include <test/util/txmempool.h>
 #include <util/hasher.h>
 #include <util/rbf.h>
+#include <util/time.h>
 #include <txmempool.h>
 #include <validation.h>
 #include <validationinterface.h>
@@ -165,14 +166,15 @@ void CheckPackageToValidate(const node::PackageToValidate& package_to_validate, 
 
 FUZZ_TARGET(txdownloadman, .init = initialize)
 {
+    SeedRandomStateForTest(SeedRand::ZEROS);
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
+    SetMockTime(ConsumeTime(fuzzed_data_provider));
 
     // Initialize txdownloadman
     bilingual_str error;
     CTxMemPool pool{MemPoolOptionsForTest(g_setup->m_node), error};
-    const auto max_orphan_count = fuzzed_data_provider.ConsumeIntegralInRange<unsigned int>(0, 300);
     FastRandomContext det_rand{true};
-    node::TxDownloadManager txdownloadman{node::TxDownloadOptions{pool, det_rand, max_orphan_count, true}};
+    node::TxDownloadManager txdownloadman{node::TxDownloadOptions{pool, det_rand, true}};
 
     std::chrono::microseconds time{244466666};
 
@@ -224,10 +226,10 @@ FUZZ_TARGET(txdownloadman, .init = initialize)
                 Assert(first_time_failure || !todo.m_should_add_extra_compact_tx);
             },
             [&] {
-                GenTxid gtxid = fuzzed_data_provider.ConsumeBool() ?
-                                GenTxid::Txid(rand_tx->GetHash()) :
-                                GenTxid::Wtxid(rand_tx->GetWitnessHash());
-                txdownloadman.AddTxAnnouncement(rand_peer, gtxid, time, /*p2p_inv=*/fuzzed_data_provider.ConsumeBool());
+                auto gtxid = fuzzed_data_provider.ConsumeBool() ?
+                             GenTxid{rand_tx->GetHash()} :
+                             GenTxid{rand_tx->GetWitnessHash()};
+                txdownloadman.AddTxAnnouncement(rand_peer, gtxid, time);
             },
             [&] {
                 txdownloadman.GetRequestsToSend(rand_peer, time);
@@ -257,8 +259,7 @@ FUZZ_TARGET(txdownloadman, .init = initialize)
                     // returned true.
                     Assert(expect_work);
                 }
-            }
-        );
+            });
         // Jump forwards or backwards
         auto time_skip = fuzzed_data_provider.PickValueInArray(TIME_SKIPS);
         if (fuzzed_data_provider.ConsumeBool()) time_skip *= -1;
@@ -276,13 +277,9 @@ FUZZ_TARGET(txdownloadman, .init = initialize)
 // peer without tracking anything (this is only for the txdownload_impl target).
 static bool HasRelayPermissions(NodeId peer) { return peer == 0; }
 
-static void CheckInvariants(const node::TxDownloadManagerImpl& txdownload_impl, size_t max_orphan_count)
+static void CheckInvariants(const node::TxDownloadManagerImpl& txdownload_impl)
 {
-    const TxOrphanage& orphanage = txdownload_impl.m_orphanage;
-
-    // Orphanage usage should never exceed what is allowed
-    Assert(orphanage.Size() <= max_orphan_count);
-
+    txdownload_impl.m_orphanage->SanityCheck();
     // We should never have more than the maximum in-flight requests out for a peer.
     for (NodeId peer = 0; peer < NUM_PEERS; ++peer) {
         if (!HasRelayPermissions(peer)) {
@@ -294,14 +291,15 @@ static void CheckInvariants(const node::TxDownloadManagerImpl& txdownload_impl, 
 
 FUZZ_TARGET(txdownloadman_impl, .init = initialize)
 {
+    SeedRandomStateForTest(SeedRand::ZEROS);
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
+    SetMockTime(ConsumeTime(fuzzed_data_provider));
 
     // Initialize a TxDownloadManagerImpl
     bilingual_str error;
     CTxMemPool pool{MemPoolOptionsForTest(g_setup->m_node), error};
-    const auto max_orphan_count = fuzzed_data_provider.ConsumeIntegralInRange<unsigned int>(0, 300);
     FastRandomContext det_rand{true};
-    node::TxDownloadManagerImpl txdownload_impl{node::TxDownloadOptions{pool, det_rand, max_orphan_count, true}};
+    node::TxDownloadManagerImpl txdownload_impl{node::TxDownloadOptions{pool, det_rand, true}};
 
     std::chrono::microseconds time{244466666};
 
@@ -345,7 +343,7 @@ FUZZ_TARGET(txdownloadman_impl, .init = initialize)
                 block.vtx.push_back(rand_tx);
                 txdownload_impl.BlockConnected(std::make_shared<CBlock>(block));
                 // Block transactions must be removed from orphanage
-                Assert(!txdownload_impl.m_orphanage.HaveTx(rand_tx->GetWitnessHash()));
+                Assert(!txdownload_impl.m_orphanage->HaveTx(rand_tx->GetWitnessHash()));
             },
             [&] {
                 txdownload_impl.BlockDisconnected();
@@ -367,10 +365,10 @@ FUZZ_TARGET(txdownloadman_impl, .init = initialize)
                 if (!reject_contains_wtxid) Assert(todo.m_unique_parents.size() <= rand_tx->vin.size());
             },
             [&] {
-                GenTxid gtxid = fuzzed_data_provider.ConsumeBool() ?
-                                GenTxid::Txid(rand_tx->GetHash()) :
-                                GenTxid::Wtxid(rand_tx->GetWitnessHash());
-                txdownload_impl.AddTxAnnouncement(rand_peer, gtxid, time, /*p2p_inv=*/fuzzed_data_provider.ConsumeBool());
+                auto gtxid = fuzzed_data_provider.ConsumeBool() ?
+                             GenTxid{rand_tx->GetHash()} :
+                             GenTxid{rand_tx->GetWitnessHash()};
+                txdownload_impl.AddTxAnnouncement(rand_peer, gtxid, time);
             },
             [&] {
                 const auto getdata_requests = txdownload_impl.GetRequestsToSend(rand_peer, time);
@@ -389,7 +387,7 @@ FUZZ_TARGET(txdownloadman_impl, .init = initialize)
                 // The only combination that doesn't make sense is validate both tx and package.
                 Assert(!(should_validate && maybe_package.has_value()));
                 if (should_validate) {
-                    Assert(!txdownload_impl.AlreadyHaveTx(GenTxid::Wtxid(rand_tx->GetWitnessHash()), /*include_reconsiderable=*/true));
+                    Assert(!txdownload_impl.AlreadyHaveTx(rand_tx->GetWitnessHash(), /*include_reconsiderable=*/true));
                 }
                 if (maybe_package.has_value()) {
                     CheckPackageToValidate(*maybe_package, rand_peer);
@@ -397,7 +395,7 @@ FUZZ_TARGET(txdownloadman_impl, .init = initialize)
                     const auto& package = maybe_package->m_txns;
                     // Parent is in m_lazy_recent_rejects_reconsiderable and child is in m_orphanage
                     Assert(txdownload_impl.RecentRejectsReconsiderableFilter().contains(rand_tx->GetWitnessHash().ToUint256()));
-                    Assert(txdownload_impl.m_orphanage.HaveTx(maybe_package->m_txns.back()->GetWitnessHash()));
+                    Assert(txdownload_impl.m_orphanage->HaveTx(maybe_package->m_txns.back()->GetWitnessHash()));
                     // Package has not been rejected
                     Assert(!txdownload_impl.RecentRejectsReconsiderableFilter().contains(GetPackageHash(package)));
                     // Neither is in m_lazy_recent_rejects
@@ -418,7 +416,7 @@ FUZZ_TARGET(txdownloadman_impl, .init = initialize)
                     // However, if there was a non-null tx in the workset, HaveMoreWork should have
                     // returned true.
                     Assert(expect_work);
-                    Assert(txdownload_impl.AlreadyHaveTx(GenTxid::Wtxid(ptx->GetWitnessHash()), /*include_reconsiderable=*/false));
+                    Assert(txdownload_impl.AlreadyHaveTx(ptx->GetWitnessHash(), /*include_reconsiderable=*/false));
                     // Presumably we have validated this tx. Use "missing inputs" to keep it in the
                     // orphanage longer. Later iterations might call MempoolAcceptedTx or
                     // MempoolRejectedTx with a different error.
@@ -426,14 +424,13 @@ FUZZ_TARGET(txdownloadman_impl, .init = initialize)
                     state_missing_inputs.Invalid(TxValidationResult::TX_MISSING_INPUTS, "");
                     txdownload_impl.MempoolRejectedTx(ptx, state_missing_inputs, rand_peer, fuzzed_data_provider.ConsumeBool());
                 }
-            }
-        );
+            });
 
         auto time_skip = fuzzed_data_provider.PickValueInArray(TIME_SKIPS);
         if (fuzzed_data_provider.ConsumeBool()) time_skip *= -1;
         time += time_skip;
-        CheckInvariants(txdownload_impl, max_orphan_count);
     }
+    CheckInvariants(txdownload_impl);
     // Disconnect everybody, check that all data structures are empty.
     for (NodeId nodeid = 0; nodeid < NUM_PEERS; ++nodeid) {
         txdownload_impl.DisconnectedPeer(nodeid);

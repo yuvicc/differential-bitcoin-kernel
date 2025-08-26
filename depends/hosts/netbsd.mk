@@ -1,5 +1,5 @@
-netbsd_CFLAGS=-pipe -std=$(C_STANDARD)
-netbsd_CXXFLAGS=-pipe -std=$(CXX_STANDARD)
+netbsd_CFLAGS=
+netbsd_CXXFLAGS=
 
 ifneq ($(LTO),)
 netbsd_AR = $(host_toolchain)gcc-ar
@@ -7,12 +7,10 @@ netbsd_NM = $(host_toolchain)gcc-nm
 netbsd_RANLIB = $(host_toolchain)gcc-ranlib
 endif
 
-netbsd_CXXFLAGS=$(netbsd_CFLAGS)
-
 netbsd_release_CFLAGS=-O2
 netbsd_release_CXXFLAGS=$(netbsd_release_CFLAGS)
 
-netbsd_debug_CFLAGS=-O1
+netbsd_debug_CFLAGS=-O1 -g
 netbsd_debug_CXXFLAGS=$(netbsd_debug_CFLAGS)
 
 ifeq (86,$(findstring 86,$(build_arch)))

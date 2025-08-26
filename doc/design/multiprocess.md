@@ -4,27 +4,6 @@ Guide to the design and architecture of the Bitcoin Core multiprocess feature
 
 _This document describes the design of the multiprocess feature. For usage information, see the top-level [multiprocess.md](../multiprocess.md) file._
 
-## Table of contents
-
-- [Introduction](#introduction)
-- [Current Architecture](#current-architecture)
-- [Proposed Architecture](#proposed-architecture)
-- [Component Overview: Navigating the IPC Framework](#component-overview-navigating-the-ipc-framework)
-- [Design Considerations](#design-considerations)
-  - [Selection of Cap’n Proto](#selection-of-capn-proto)
-  - [Hiding IPC](#hiding-ipc)
-  - [Interface Definition Maintenance](#interface-definition-maintenance)
-  - [Interface Stability](#interface-stability)
-- [Security Considerations](#security-considerations)
-- [Example Use Cases and Flows](#example-use-cases-and-flows)
-  - [Retrieving a Block Hash](#retrieving-a-block-hash)
-- [Future Enhancements](#future-enhancements)
-- [Conclusion](#conclusion)
-- [Appendices](#appendices)
-  - [Glossary of Terms](#glossary-of-terms)
-  - [References](#references)
-- [Acknowledgements](#acknowledgements)
-
 ## Introduction
 
 The Bitcoin Core software has historically employed a monolithic architecture. The existing design has integrated functionality like P2P network operations, wallet management, and a GUI into a single executable. While effective, it has limitations in flexibility, security, and scalability. This project introduces changes that transition Bitcoin Core to a more modular architecture. It aims to enhance security, improve usability, and facilitate maintenance and development of the software in the long run.
@@ -74,7 +53,7 @@ This section describes the major components of the Inter-Process Communication (
 - These Cap’n Proto files ([learn more about Cap'n Proto RPC](https://capnproto.org/rpc.html)) define the structure and format of messages that are exchanged over IPC. They serve as blueprints for generating C++ code that bridges the gap between high-level C++ interfaces and low-level socket communication.
 
 ### The `mpgen` Code Generation Tool
-- A central component of the IPC framework is the `mpgen` tool which is part the [`libmultiprocess` project](https://github.com/chaincodelabs/libmultiprocess). This tool takes the `.capnp` files as input and generates C++ code.
+- A central component of the IPC framework is the `mpgen` tool which is part of the [`libmultiprocess` project](https://github.com/bitcoin-core/libmultiprocess). This tool takes the `.capnp` files as input and generates C++ code.
 - The generated code handles IPC communication, translating interface calls into socket reads and writes.
 
 ### C++ Client Subclasses in Generated Code
@@ -136,7 +115,7 @@ The libmultiprocess runtime is designed to place as few constraints as possible 
 
 ### Interface Definition Maintenance
 
-The choice to maintain interface definitions and C++ type mappings as `.capnp` files in the [`src/ipc/capnp/`](../../src/ipc/capnp/) was mostly done for convenience, and probably something that could be improved in the future.
+The choice to maintain interface definitions and C++ type mappings as `.capnp` files in the [`src/ipc/capnp/`](../../src/ipc/capnp/) was mostly done for convenience, and is probably something that could be improved in the future.
 
 In the current design, class names, method names, and parameter names are duplicated between C++ interfaces in [`src/interfaces/`](../../src/interfaces/) and Cap’n Proto files in [`src/ipc/capnp/`](../../src/ipc/capnp/). While this keeps C++ interface headers simple and free of references to IPC, it is a maintenance burden because it means inconsistencies between C++ declarations and Cap’n Proto declarations will result in compile errors. (Static type checking ensures these are not runtime errors.)
 
@@ -150,7 +129,7 @@ The currently defined IPC interfaces are unstable, and can change freely with no
 
 ## Security Considerations
 
-The integration of [Cap’n Proto](https://capnproto.org/) and [libmultiprocess](https://github.com/chaincodelabs/libmultiprocess) into the Bitcoin Core architecture increases its potential attack surface. Cap’n Proto, being a complex and substantial new dependency, introduces potential sources of vulnerability, particularly through the creation of new UNIX sockets. The inclusion of libmultiprocess, while a smaller external dependency, also contributes to this risk. However, plans are underway to incorporate libmultiprocess as a git subtree, aligning it more closely with the project's well-reviewed internal libraries. While adopting these multiprocess features does introduce some risk, it's worth noting that they can be disabled, allowing builds without these new dependencies. This flexibility ensures that users can balance functionality with security considerations as needed.
+The integration of [Cap’n Proto](https://capnproto.org/) and [libmultiprocess](https://github.com/bitcoin-core/libmultiprocess) into the Bitcoin Core architecture increases its potential attack surface. Cap’n Proto, being a complex and substantial new dependency, introduces potential sources of vulnerability, particularly through the creation of new UNIX sockets. The inclusion of libmultiprocess, while a smaller external dependency, also contributes to this risk. However, plans are underway to incorporate libmultiprocess as a git subtree, aligning it more closely with the project's well-reviewed internal libraries. While adopting these multiprocess features does introduce some risk, it's worth noting that they can be disabled, allowing builds without these new dependencies. This flexibility ensures that users can balance functionality with security considerations as needed.
 
 ## Example Use Cases and Flows
 
@@ -212,7 +191,7 @@ Further improvements are possible such as:
 - Automatically generating `.capnp` files from C++ interface definitions (see [Interface Definition Maintenance](#interface-definition-maintenance)).
 - Simplifying and stabilizing interfaces (see [Interface Stability](#interface-stability)).
 - Adding sandbox features, restricting subprocess access to resources and data (see [https://eklitzke.org/multiprocess-bitcoin](https://eklitzke.org/multiprocess-bitcoin)).
-- Using Cap'n Proto's support for [other languages](https://capnproto.org/otherlang.html), such as [Rust](https://github.com/capnproto/capnproto-rust), to allow code written in other languages to call Bitcoin Core C++ code, and vice versa (see [How to rustify libmultiprocess? #56](https://github.com/chaincodelabs/libmultiprocess/issues/56)).
+- Using Cap'n Proto's support for [other languages](https://capnproto.org/otherlang.html), such as [Rust](https://github.com/capnproto/capnproto-rust), to allow code written in other languages to call Bitcoin Core C++ code, and vice versa (see [How to rustify libmultiprocess? #56](https://github.com/bitcoin-core/libmultiprocess/issues/56)).
 
 ## Conclusion
 
@@ -257,7 +236,7 @@ This modularization represents an advancement in Bitcoin Core's architecture, of
 ## References
 
 - **Cap’n Proto RPC protocol description**: https://capnproto.org/rpc.html
-- **libmultiprocess project page**: https://github.com/chaincodelabs/libmultiprocess
+- **libmultiprocess project page**: https://github.com/bitcoin-core/libmultiprocess
 
 ## Acknowledgements
 
