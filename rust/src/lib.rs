@@ -1,6 +1,11 @@
 use std::{ffi::{CString, NulError}, ptr::NonNull, sync::Arc};
 
 use bitcoinkernel_sys::*;
+pub mod enums;
+pub mod error;
+pub mod block;
+pub mod transaction;
+pub mod chain;
 
 /// Struct for transaction operations
 pub struct Transaction {
@@ -94,25 +99,6 @@ pub struct BlockValidationState {
 pub struct ValidationInterface {
     
 }
-
-pub enum ValidationMode {
-    VALIDATION_STATE_VALID = 0,
-    VALIDATION_STATE_INVALID,
-    VALIDATION_STATE_ERROR,
-}
-
-pub enum BlockValidationResult {
-    BLOCK_RESULT_UNSET = 0,
-    BLOCK_CONSENSUS,
-    BLOCK_CACHED_INVALID,
-    BLOCK_INVALID_HEADER,
-    BLOCK_MUTATED,
-    BLOCK_MISSING_PREV,
-    BLOCK_INVALID_PREV,
-    BLOCK_TIME_FUTURE,
-    BLOCK_HEADER_LOW_WORK,
-}
-
 
 /// Struct for ChainParams
 pub struct ChainParams {
@@ -214,17 +200,27 @@ pub enum KernelError {
 }
 
 /// A collection of errors that may occur during scriptverification
-#[derive(Debug)]
-pub enum ScriptVerifyError {
-    TxInputIndex,
-    TxSizeMismatch,
-    TxDeserialize,
-    InvalidFlags,
-    InvalidFlagsCombination,
-    SpentOutputsMismatch,
-    SpendOutputsRequired,
-    Invalid,
+pub enum ScriptVerificationFlags {
+    NONE,
+    P2SH,
+    DERSIG,
+    NULLDUMMY,
+    CHECKLOCKTIMEVERIFY,
+    CHECKSEQUENCEVERIFY,
+    WITNESS,
+    TAPROOT,
+    ALL,
 }
+
+pub enum ScriptVerifyStatus {
+    OK,
+    ERROR_INVALID_FLAGS_COMBINATION,
+    ERROR_SPENT_OUTPUTS_REQUIRED,
+}
+
+
+
+
 
 
 
