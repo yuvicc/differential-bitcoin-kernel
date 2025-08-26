@@ -44,9 +44,13 @@ void initialize_tx_pool()
 {
     static const auto testing_setup = MakeNoLogFileContext<const TestingSetup>();
     g_setup = testing_setup.get();
+    SetMockTime(WITH_LOCK(g_setup->m_node.chainman->GetMutex(), return g_setup->m_node.chainman->ActiveTip()->Time()));
+
+    BlockAssembler::Options options;
+    options.coinbase_output_script = P2WSH_OP_TRUE;
 
     for (int i = 0; i < 2 * COINBASE_MATURITY; ++i) {
-        COutPoint prevout{MineBlock(g_setup->m_node, P2WSH_OP_TRUE)};
+        COutPoint prevout{MineBlock(g_setup->m_node, options)};
         // Remember the txids to avoid expensive disk access later on
         auto& outpoints = i < COINBASE_MATURITY ?
                               g_outpoints_coinbase_init_mature :
@@ -98,7 +102,7 @@ void Finish(FuzzedDataProvider& fuzzed_data_provider, MockedTxPool& tx_pool, Cha
         options.nBlockMaxWeight = fuzzed_data_provider.ConsumeIntegralInRange(0U, MAX_BLOCK_WEIGHT);
         options.blockMinFeeRate = CFeeRate{ConsumeMoney(fuzzed_data_provider, /*max=*/COIN)};
         auto assembler = BlockAssembler{chainstate, &tx_pool, options};
-        auto block_template = assembler.CreateNewBlock(CScript{} << OP_TRUE);
+        auto block_template = assembler.CreateNewBlock();
         Assert(block_template->block.vtx.size() >= 1);
     }
     const auto info_all = tx_pool.infoAll();
@@ -187,6 +191,7 @@ void CheckATMPInvariants(const MempoolAcceptResult& res, bool txid_in_mempool, b
 
 FUZZ_TARGET(tx_pool_standard, .init = initialize_tx_pool)
 {
+    SeedRandomStateForTest(SeedRand::ZEROS);
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
     const auto& node = g_setup->m_node;
     auto& chainstate{static_cast<DummyChainState&>(node.chainman->ActiveChainstate())};
@@ -283,7 +288,7 @@ FUZZ_TARGET(tx_pool_standard, .init = initialize_tx_pool)
                                    tx->GetHash() :
                                    PickValue(fuzzed_data_provider, outpoints_rbf).hash;
             const auto delta = fuzzed_data_provider.ConsumeIntegralInRange<CAmount>(-50 * COIN, +50 * COIN);
-            tx_pool.PrioritiseTransaction(txid.ToUint256(), delta);
+            tx_pool.PrioritiseTransaction(txid, delta);
         }
 
         // Remember all removed and added transactions
@@ -311,8 +316,8 @@ FUZZ_TARGET(tx_pool_standard, .init = initialize_tx_pool)
         node.validation_signals->SyncWithValidationInterfaceQueue();
         node.validation_signals->UnregisterSharedValidationInterface(txr);
 
-        bool txid_in_mempool = tx_pool.exists(GenTxid::Txid(tx->GetHash()));
-        bool wtxid_in_mempool = tx_pool.exists(GenTxid::Wtxid(tx->GetWitnessHash()));
+        bool txid_in_mempool = tx_pool.exists(tx->GetHash());
+        bool wtxid_in_mempool = tx_pool.exists(tx->GetWitnessHash());
         CheckATMPInvariants(res, txid_in_mempool, wtxid_in_mempool);
 
         Assert(accepted != added.empty());
@@ -365,6 +370,7 @@ FUZZ_TARGET(tx_pool_standard, .init = initialize_tx_pool)
 
 FUZZ_TARGET(tx_pool, .init = initialize_tx_pool)
 {
+    SeedRandomStateForTest(SeedRand::ZEROS);
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
     const auto& node = g_setup->m_node;
     auto& chainstate{static_cast<DummyChainState&>(node.chainman->ActiveChainstate())};
@@ -403,7 +409,7 @@ FUZZ_TARGET(tx_pool, .init = initialize_tx_pool)
                                    mut_tx.GetHash() :
                                    PickValue(fuzzed_data_provider, txids);
             const auto delta = fuzzed_data_provider.ConsumeIntegralInRange<CAmount>(-50 * COIN, +50 * COIN);
-            tx_pool.PrioritiseTransaction(txid.ToUint256(), delta);
+            tx_pool.PrioritiseTransaction(txid, delta);
         }
 
         const auto tx = MakeTransactionRef(mut_tx);

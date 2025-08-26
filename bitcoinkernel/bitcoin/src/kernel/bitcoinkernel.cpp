@@ -2,12 +2,15 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#define BITCOINKERNEL_BUILD
+
 #include <kernel/bitcoinkernel.h>
 
 #include <chain.h>
 #include <coins.h>
 #include <consensus/amount.h>
 #include <consensus/validation.h>
+#include <kernel/caches.h>
 #include <kernel/chainparams.h>
 #include <kernel/checks.h>
 #include <kernel/context.h>
@@ -15,7 +18,6 @@
 #include <kernel/warning.h>
 #include <logging.h>
 #include <node/blockstorage.h>
-#include <node/caches.h>
 #include <node/chainstate.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
@@ -54,15 +56,17 @@ using util::ImmediateTaskRunner;
 // library aren't required to export this symbol
 extern const std::function<std::string(const char*)> G_TRANSLATION_FUN{nullptr};
 
-static const kernel::Context kernel_context_static{};
+static const kernel::Context btck_context_static{};
+
+struct btck_BlockTreeEntry {
+    CBlockIndex* m_block_index;
+};
+
+struct btck_Block {
+    std::shared_ptr<const CBlock> m_block;
+};
 
 namespace {
-
-/** Check that all specified flags are part of the libbitcoinkernel interface. */
-bool verify_flags(unsigned int flags)
-{
-    return (flags & ~(kernel_SCRIPT_FLAGS_VERIFY_ALL)) == 0;
-}
 
 bool is_valid_flag_combination(unsigned int flags)
 {
@@ -71,85 +75,110 @@ bool is_valid_flag_combination(unsigned int flags)
     return true;
 }
 
-std::string log_level_to_string(const kernel_LogLevel level)
+class WriterStream
+{
+private:
+    btck_WriteBytes m_writer;
+    void* m_user_data;
+
+public:
+    WriterStream(btck_WriteBytes writer, void* user_data)
+        : m_writer{writer}, m_user_data{user_data} {}
+
+    //
+    // Stream subset
+    //
+    void write(std::span<const std::byte> src)
+    {
+        if (m_writer(std::data(src), src.size(), m_user_data) != 0) {
+            throw std::runtime_error("Failed to write serilization data");
+        }
+    }
+
+    template <typename T>
+    WriterStream& operator<<(const T& obj)
+    {
+        ::Serialize(*this, obj);
+        return *this;
+    }
+};
+
+BCLog::Level get_bclog_level(btck_LogLevel level)
 {
     switch (level) {
-    case kernel_LogLevel::kernel_LOG_INFO: {
-        return "info";
+    case btck_LogLevel_INFO: {
+        return BCLog::Level::Info;
     }
-    case kernel_LogLevel::kernel_LOG_DEBUG: {
-        return "debug";
+    case btck_LogLevel_DEBUG: {
+        return BCLog::Level::Debug;
     }
-    case kernel_LogLevel::kernel_LOG_TRACE: {
-        return "trace";
+    case btck_LogLevel_TRACE: {
+        return BCLog::Level::Trace;
     }
-    } // no default case, so the compiler can warn about missing cases
+    }
     assert(false);
 }
 
-std::string log_category_to_string(const kernel_LogCategory category)
+BCLog::LogFlags get_bclog_flag(btck_LogCategory category)
 {
     switch (category) {
-    case kernel_LogCategory::kernel_LOG_BENCH: {
-        return "bench";
+    case btck_LogCategory_BENCH: {
+        return BCLog::LogFlags::BENCH;
     }
-    case kernel_LogCategory::kernel_LOG_BLOCKSTORAGE: {
-        return "blockstorage";
+    case btck_LogCategory_BLOCKSTORAGE: {
+        return BCLog::LogFlags::BLOCKSTORAGE;
     }
-    case kernel_LogCategory::kernel_LOG_COINDB: {
-        return "coindb";
+    case btck_LogCategory_COINDB: {
+        return BCLog::LogFlags::COINDB;
     }
-    case kernel_LogCategory::kernel_LOG_LEVELDB: {
-        return "leveldb";
+    case btck_LogCategory_LEVELDB: {
+        return BCLog::LogFlags::LEVELDB;
     }
-    case kernel_LogCategory::kernel_LOG_LOCK: {
-        return "lock";
+    case btck_LogCategory_MEMPOOL: {
+        return BCLog::LogFlags::MEMPOOL;
     }
-    case kernel_LogCategory::kernel_LOG_MEMPOOL: {
-        return "mempool";
+    case btck_LogCategory_PRUNE: {
+        return BCLog::LogFlags::PRUNE;
     }
-    case kernel_LogCategory::kernel_LOG_PRUNE: {
-        return "prune";
+    case btck_LogCategory_RAND: {
+        return BCLog::LogFlags::RAND;
     }
-    case kernel_LogCategory::kernel_LOG_RAND: {
-        return "rand";
+    case btck_LogCategory_REINDEX: {
+        return BCLog::LogFlags::REINDEX;
     }
-    case kernel_LogCategory::kernel_LOG_REINDEX: {
-        return "reindex";
+    case btck_LogCategory_VALIDATION: {
+        return BCLog::LogFlags::VALIDATION;
     }
-    case kernel_LogCategory::kernel_LOG_VALIDATION: {
-        return "validation";
+    case btck_LogCategory_KERNEL: {
+        return BCLog::LogFlags::KERNEL;
     }
-    case kernel_LogCategory::kernel_LOG_KERNEL: {
-        return "kernel";
+    case btck_LogCategory_ALL: {
+        return BCLog::LogFlags::ALL;
     }
-    case kernel_LogCategory::kernel_LOG_ALL: {
-        return "all";
     }
-    } // no default case, so the compiler can warn about missing cases
     assert(false);
 }
 
-kernel_SynchronizationState cast_state(SynchronizationState state)
+btck_SynchronizationState cast_state(SynchronizationState state)
 {
     switch (state) {
     case SynchronizationState::INIT_REINDEX:
-        return kernel_SynchronizationState::kernel_INIT_REINDEX;
+        return btck_SynchronizationState_INIT_REINDEX;
     case SynchronizationState::INIT_DOWNLOAD:
-        return kernel_SynchronizationState::kernel_INIT_DOWNLOAD;
+        return btck_SynchronizationState_INIT_DOWNLOAD;
     case SynchronizationState::POST_INIT:
-        return kernel_SynchronizationState::kernel_POST_INIT;
+        return btck_SynchronizationState_POST_INIT;
     } // no default case, so the compiler can warn about missing cases
     assert(false);
 }
 
-kernel_Warning cast_kernel_warning(kernel::Warning warning)
+btck_Warning cast_btck_warning(kernel::Warning warning)
 {
     switch (warning) {
     case kernel::Warning::UNKNOWN_NEW_RULES_ACTIVATED:
-        return kernel_Warning::kernel_LARGE_WORK_INVALID_CHAIN;
+        return btck_Warning_UNKNOWN_NEW_RULES_ACTIVATED;
     case kernel::Warning::LARGE_WORK_INVALID_CHAIN:
-        return kernel_Warning::kernel_LARGE_WORK_INVALID_CHAIN;
+        return btck_Warning_LARGE_WORK_INVALID_CHAIN;
     } // no default case, so the compiler can warn about missing cases
     assert(false);
 }
@@ -157,45 +186,86 @@ kernel_Warning cast_kernel_warning(kernel::Warning warning)
 class KernelNotifications : public kernel::Notifications
 {
 private:
-    kernel_NotificationInterfaceCallbacks m_cbs;
+    btck_NotificationInterfaceCallbacks m_cbs;
 
 public:
-    KernelNotifications(kernel_NotificationInterfaceCallbacks cbs)
+    KernelNotifications(btck_NotificationInterfaceCallbacks cbs)
         : m_cbs{cbs}
     {
     }
 
-    kernel::InterruptResult blockTip(SynchronizationState state, CBlockIndex& index) override
+    ~KernelNotifications()
     {
-        if (m_cbs.block_tip) m_cbs.block_tip(m_cbs.user_data, cast_state(state), reinterpret_cast<kernel_BlockIndex*>(&index));
+        if (m_cbs.user_data && m_cbs.user_data_destroy) {
+            m_cbs.user_data_destroy(m_cbs.user_data);
+        }
+        m_cbs.user_data_destroy = nullptr;
+        m_cbs.user_data = nullptr;
+    }
+
+    kernel::InterruptResult blockTip(SynchronizationState state, CBlockIndex& index, double verification_progress) override
+    {
+        if (m_cbs.block_tip) m_cbs.block_tip(m_cbs.user_data, cast_state(state), new btck_BlockTreeEntry{&index}, verification_progress);
         return {};
     }
     void headerTip(SynchronizationState state, int64_t height, int64_t timestamp, bool presync) override
     {
-        if (m_cbs.header_tip) m_cbs.header_tip(m_cbs.user_data, cast_state(state), height, timestamp, presync);
+        if (m_cbs.header_tip) m_cbs.header_tip(m_cbs.user_data, cast_state(state), height, timestamp, presync ? 1 : 0);
+    }
+    void progress(const bilingual_str& title, int progress_percent, bool resume_possible) override
+    {
+        if (m_cbs.progress) m_cbs.progress(m_cbs.user_data, title.original.c_str(), title.original.length(), progress_percent, resume_possible ? 1 : 0);
     }
     void warningSet(kernel::Warning id, const bilingual_str& message) override
     {
-        if (m_cbs.warning_set) m_cbs.warning_set(m_cbs.user_data, cast_kernel_warning(id), message.original.c_str());
+        if (m_cbs.warning_set) m_cbs.warning_set(m_cbs.user_data, cast_btck_warning(id), message.original.c_str(), message.original.length());
     }
     void warningUnset(kernel::Warning id) override
     {
-        if (m_cbs.warning_unset) m_cbs.warning_unset(m_cbs.user_data, cast_kernel_warning(id));
+        if (m_cbs.warning_unset) m_cbs.warning_unset(m_cbs.user_data, cast_btck_warning(id));
     }
     void flushError(const bilingual_str& message) override
     {
-        if (m_cbs.flush_error) m_cbs.flush_error(m_cbs.user_data, message.original.c_str());
+        if (m_cbs.flush_error) m_cbs.flush_error(m_cbs.user_data, message.original.c_str(), message.original.length());
     }
     void fatalError(const bilingual_str& message) override
     {
-        if (m_cbs.fatal_error) m_cbs.fatal_error(m_cbs.user_data, message.original.c_str());
+        if (m_cbs.fatal_error) m_cbs.fatal_error(m_cbs.user_data, message.original.c_str(), message.original.length());
+    }
+};
+
+class KernelValidationInterface final : public CValidationInterface
+{
+public:
+    btck_ValidationInterfaceCallbacks m_cbs;
+
+    explicit KernelValidationInterface(const btck_ValidationInterfaceCallbacks vi_cbs) : m_cbs{vi_cbs} {}
+
+    ~KernelValidationInterface()
+    {
+        if (m_cbs.user_data && m_cbs.user_data_destroy) {
+            m_cbs.user_data_destroy(m_cbs.user_data);
+        }
+        m_cbs.user_data = nullptr;
+        m_cbs.user_data_destroy = nullptr;
+    }
+
+protected:
+    void BlockChecked(const std::shared_ptr<const CBlock>& block, const BlockValidationState& stateIn) override
+    {
+        if (m_cbs.block_checked) {
+            m_cbs.block_checked((void*)m_cbs.user_data,
+                                new btck_Block{block},
+                                reinterpret_cast<const btck_BlockValidationState*>(&stateIn));
+        }
     }
 };
 
 struct ContextOptions {
-    std::unique_ptr<const KernelNotifications> m_notifications;
-    std::unique_ptr<const CChainParams> m_chainparams;
-    std::unique_ptr<const CTxMemPool::Options> m_mempool_options;
+    mutable Mutex m_mutex;
+    std::unique_ptr<const CChainParams> m_chainparams GUARDED_BY(m_mutex);
+    std::shared_ptr<KernelNotifications> m_notifications GUARDED_BY(m_mutex);
+    std::shared_ptr<KernelValidationInterface> m_validation_interface GUARDED_BY(m_mutex);
 };
 
 class Context
@@ -203,7 +273,7 @@ class Context
 public:
     std::unique_ptr<kernel::Context> m_context;
 
-    std::unique_ptr<KernelNotifications> m_notifications;
+    std::shared_ptr<KernelNotifications> m_notifications;
 
     std::unique_ptr<util::SignalInterrupt> m_interrupt;
 
@@ -211,358 +281,334 @@ public:
 
     std::unique_ptr<const CChainParams> m_chainparams;
 
-    std::unique_ptr<CTxMemPool> m_mempool;
+    std::shared_ptr<KernelValidationInterface> m_validation_interface;
 
     Context(const ContextOptions* options, bool& sane)
         : m_context{std::make_unique<kernel::Context>()},
           m_interrupt{std::make_unique<util::SignalInterrupt>()},
           m_signals{std::make_unique<ValidationSignals>(std::make_unique<ImmediateTaskRunner>())}
     {
-        if (options && options->m_notifications) {
-            m_notifications = std::make_unique<KernelNotifications>(*options->m_notifications);
-        } else {
-            m_notifications = std::make_unique<KernelNotifications>(kernel_NotificationInterfaceCallbacks{
-                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr});
+        if (options) {
+            LOCK(options->m_mutex);
+            if (options->m_chainparams) {
+                m_chainparams = std::make_unique<const CChainParams>(*options->m_chainparams);
+            }
+            if (options->m_notifications) {
+                m_notifications = options->m_notifications;
+            }
+            if (options->m_validation_interface) {
+                m_validation_interface = options->m_validation_interface;
+                m_signals->RegisterSharedValidationInterface(m_validation_interface);
+            }
         }
 
-        if (options && options->m_chainparams) {
-            m_chainparams = std::make_unique<const CChainParams>(*options->m_chainparams);
-        } else {
+        if (!m_chainparams) {
             m_chainparams = CChainParams::Main();
         }
-
-        if (options && options->m_mempool_options) {
-            bilingual_str mempool_err;
-            m_mempool = std::make_unique<CTxMemPool>(*options->m_mempool_options, mempool_err);
-            if (!mempool_err.empty()) {
-                LogError("Failed to construct a chainstate manager: %s", mempool_err.original);
-                sane = false;
-            }
-        } else {
-            m_mempool = nullptr;
+        if (!m_notifications) {
+            m_notifications = std::make_shared<KernelNotifications>(btck_NotificationInterfaceCallbacks{
+                nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr});
         }
 
         if (!kernel::SanityChecks(*m_context)) {
             sane = false;
         }
     }
-};
 
-class KernelValidationInterface final : public CValidationInterface
-{
-public:
-    const kernel_ValidationInterfaceCallbacks m_cbs;
-
-    explicit KernelValidationInterface(const kernel_ValidationInterfaceCallbacks vi_cbs) : m_cbs{vi_cbs} {}
-
-protected:
-    void BlockChecked(const CBlock& block, const BlockValidationState& stateIn) override
+    ~Context()
     {
-        if (m_cbs.block_checked) {
-            m_cbs.block_checked(m_cbs.user_data,
-                                reinterpret_cast<const kernel_BlockPointer*>(&block),
-                                reinterpret_cast<const kernel_BlockValidationState*>(&stateIn));
-        }
+        m_signals->UnregisterSharedValidationInterface(m_validation_interface);
     }
 };
 
-const CTransaction* cast_transaction(const kernel_Transaction* transaction)
-{
-    assert(transaction);
-    return reinterpret_cast<const CTransaction*>(transaction);
-}
+//! Helper struct to wrap the ChainstateManager-related Options
+struct ChainstateManagerOptions {
+    mutable Mutex m_mutex;
+    ChainstateManager::Options m_chainman_options GUARDED_BY(m_mutex);
+    node::BlockManager::Options m_blockman_options GUARDED_BY(m_mutex);
+    std::shared_ptr<Context> m_context;
+    node::ChainstateLoadOptions m_chainstate_load_options GUARDED_BY(m_mutex);
 
-const CScript* cast_script_pubkey(const kernel_ScriptPubkey* script_pubkey)
-{
-    assert(script_pubkey);
-    return reinterpret_cast<const CScript*>(script_pubkey);
-}
+    ChainstateManagerOptions(const std::shared_ptr<Context>& context, const fs::path& data_dir, const fs::path& blocks_dir)
+        : m_chainman_options{ChainstateManager::Options{
+              .chainparams = *context->m_chainparams,
+              .datadir = data_dir,
+              .notifications = *context->m_notifications,
+              .signals = context->m_signals.get()}},
+          m_blockman_options{node::BlockManager::Options{
+              .chainparams = *context->m_chainparams,
+              .blocks_dir = blocks_dir,
+              .notifications = *context->m_notifications,
+              .block_tree_db_params = DBParams{
+                  .path = data_dir / "blocks" / "index",
+                  .cache_bytes = kernel::CacheSizes{DEFAULT_KERNEL_CACHE}.block_tree_db,
+              }}},
+          m_context{context},
+          m_chainstate_load_options{node::ChainstateLoadOptions{}}
+    {
+    }
+};
 
-const CTxOut* cast_transaction_output(const kernel_TransactionOutput* transaction_output)
-{
-    assert(transaction_output);
-    return reinterpret_cast<const CTxOut*>(transaction_output);
-}
-
-const ContextOptions* cast_const_context_options(const kernel_ContextOptions* options)
-{
-    assert(options);
-    return reinterpret_cast<const ContextOptions*>(options);
-}
-
-ContextOptions* cast_context_options(kernel_ContextOptions* options)
-{
-    assert(options);
-    return reinterpret_cast<ContextOptions*>(options);
-}
-
-const CChainParams* cast_const_chain_params(const kernel_ChainParameters* chain_params)
-{
-    assert(chain_params);
-    return reinterpret_cast<const CChainParams*>(chain_params);
-}
-
-const CTxMemPool::Options* cast_const_mempool_options(const kernel_MempoolOptions* mempool_opts)
-{
-    assert(mempool_opts);
-    return reinterpret_cast<const CTxMemPool::Options*>(mempool_opts);
-}
-
-const KernelNotifications* cast_const_notifications(const kernel_Notifications* notifications)
-{
-    assert(notifications);
-    return reinterpret_cast<const KernelNotifications*>(notifications);
-}
-
-Context* cast_context(kernel_Context* context)
-{
-    assert(context);
-    return reinterpret_cast<Context*>(context);
-}
-
-const Context* cast_const_context(const kernel_Context* context)
-{
-    assert(context);
-    return reinterpret_cast<const Context*>(context);
-}
-
-ChainstateManager::Options* cast_chainstate_manager_options(kernel_ChainstateManagerOptions* options)
-{
-    assert(options);
-    return reinterpret_cast<ChainstateManager::Options*>(options);
-}
-
-node::BlockManager::Options* cast_block_manager_options(kernel_BlockManagerOptions* options)
-{
-    assert(options);
-    return reinterpret_cast<node::BlockManager::Options*>(options);
-}
-
-ChainstateManager* cast_chainstate_manager(kernel_ChainstateManager* chainman)
-{
-    assert(chainman);
-    return reinterpret_cast<ChainstateManager*>(chainman);
-}
-
-node::ChainstateLoadOptions* cast_chainstate_load_options(kernel_ChainstateLoadOptions* options)
-{
-    assert(options);
-    return reinterpret_cast<node::ChainstateLoadOptions*>(options);
-}
-
-std::shared_ptr<CBlock>* cast_cblocksharedpointer(kernel_Block* block)
-{
-    assert(block);
-    return reinterpret_cast<std::shared_ptr<CBlock>*>(block);
-}
-
-std::shared_ptr<KernelValidationInterface>* cast_validation_interface(kernel_ValidationInterface* interface)
-{
-    assert(interface);
-    return reinterpret_cast<std::shared_ptr<KernelValidationInterface>*>(interface);
-}
-
-const BlockValidationState* cast_block_validation_state(const kernel_BlockValidationState* block_validation_state)
+const BlockValidationState* cast_block_validation_state(const btck_BlockValidationState* block_validation_state)
 {
     assert(block_validation_state);
     return reinterpret_cast<const BlockValidationState*>(block_validation_state);
 }
 
-const CBlock* cast_const_cblock(const kernel_BlockPointer* block)
-{
-    assert(block);
-    return reinterpret_cast<const CBlock*>(block);
-}
-
-CBlockIndex* cast_block_index(kernel_BlockIndex* index)
-{
-    assert(index);
-    return reinterpret_cast<CBlockIndex*>(index);
-}
-
-CBlockUndo* cast_block_undo(kernel_BlockUndo* undo)
-{
-    assert(undo);
-    return reinterpret_cast<CBlockUndo*>(undo);
-}
-
-static CCoinsViewCursor* cast_coins_view_cursor(kernel_CoinsViewCursor* cursor)
-{
-    assert(cursor);
-    return reinterpret_cast<CCoinsViewCursor*>(cursor);
-}
-
-CBlockHeader* cast_block_header(kernel_BlockHeader* header)
-{
-    assert(header);
-    return reinterpret_cast<CBlockHeader*>(header);
-}
-
 } // namespace
 
-kernel_Transaction* kernel_transaction_create(const unsigned char* raw_transaction, size_t raw_transaction_len)
+struct btck_Transaction {
+    std::shared_ptr<const CTransaction> m_tx;
+};
+
+struct btck_TransactionOutput {
+    const CTxOut* m_txout;
+    bool m_owned;
+};
+
+struct btck_ScriptPubkey {
+    const CScript* m_script;
+    bool m_owned;
+};
+
+struct btck_LoggingConnection {
+    std::unique_ptr<std::list<std::function<void(const std::string&)>>::iterator> m_connection;
+    void* user_data;
+    std::function<void(void* user_data)> m_deleter;
+
+    ~btck_LoggingConnection()
+    {
+        if (user_data && m_deleter) {
+            m_deleter(user_data);
+        }
+    }
+};
+
+struct btck_ContextOptions {
+    std::unique_ptr<ContextOptions> m_opts;
+};
+
+struct btck_Context {
+    std::shared_ptr<Context> m_context;
+};
+
+struct btck_ChainParameters {
+    std::unique_ptr<const CChainParams> m_params;
+};
+
+struct btck_ChainstateManagerOptions {
+    std::unique_ptr<ChainstateManagerOptions> m_opts;
+};
+
+struct btck_ChainstateManager {
+    std::unique_ptr<ChainstateManager> m_chainman;
+    std::shared_ptr<Context> m_context;
+};
+
+struct btck_Chain {
+    const CChain* m_chain;
+};
+
+struct btck_BlockSpentOutputs {
+    std::shared_ptr<CBlockUndo> m_block_undo;
+};
+
+struct btck_TransactionSpentOutputs {
+    const CTxUndo* m_tx_undo;
+    bool m_owned;
+};
+
+struct btck_Coin {
+    const Coin* m_coin;
+    bool m_owned;
+};
+
+btck_Transaction* btck_transaction_create(const void* raw_transaction, size_t raw_transaction_len)
 {
     try {
-        DataStream stream{std::span{raw_transaction, raw_transaction_len}};
-        auto tx = new CTransaction{deserialize, TX_WITH_WITNESS, stream};
-        return reinterpret_cast<kernel_Transaction*>(tx);
-    } catch (const std::exception&) {
-        LogDebug(BCLog::KERNEL, "Transaction decode failed.\n");
+        DataStream stream{std::span{reinterpret_cast<const std::byte*>(raw_transaction), raw_transaction_len}};
+        auto tx{std::make_shared<CTransaction>(deserialize, TX_WITH_WITNESS, stream)};
+        return new btck_Transaction{std::move(tx)};
+    } catch (...) {
         return nullptr;
     }
 }
 
-kernel_ByteArray* kernel_copy_transaction_data(kernel_Transaction* transaction_)
+size_t btck_transaction_count_outputs(const btck_Transaction* transaction)
 {
-    auto transaction{cast_transaction(transaction_)};
-
-    DataStream ss{};
-    ss << TX_WITH_WITNESS(*transaction);
-
-    auto byte_array{new kernel_ByteArray{
-        .data = new unsigned char[ss.size()],
-        .size = ss.size(),
-    }};
-
-    std::memcpy(byte_array->data, ss.data(), byte_array->size);
-
-    return byte_array;
+    return transaction->m_tx->vout.size();
 }
 
-void kernel_transaction_destroy(kernel_Transaction* transaction)
+btck_TransactionOutput* btck_transaction_get_output_at(const btck_Transaction* transaction, size_t output_index)
 {
-    if (transaction) {
-        delete cast_transaction(transaction);
+    assert(output_index < transaction->m_tx->vout.size());
+    return new btck_TransactionOutput{&transaction->m_tx->vout[output_index], false};
+}
+
+size_t btck_transaction_count_inputs(const btck_Transaction* transaction)
+{
+    return transaction->m_tx->vin.size();
+}
+
+btck_Transaction* btck_transaction_copy(const btck_Transaction* transaction)
+{
+    return new btck_Transaction{transaction->m_tx};
+}
+
+int btck_transaction_to_bytes(const btck_Transaction* transaction, btck_WriteBytes writer, void* user_data)
+{
+    try {
+        WriterStream ws{writer, user_data};
+        ws << TX_WITH_WITNESS(*transaction->m_tx);
+        return 0;
+    } catch (...) {
+        return -1;
     }
 }
 
-kernel_ScriptPubkey* kernel_script_pubkey_create(const unsigned char* script_pubkey_, size_t script_pubkey_len)
+void btck_transaction_destroy(btck_Transaction* transaction)
 {
-    auto script_pubkey = new CScript(script_pubkey_, script_pubkey_ + script_pubkey_len);
-    return reinterpret_cast<kernel_ScriptPubkey*>(script_pubkey);
+    if (!transaction) return;
+    delete transaction;
+    transaction = nullptr;
 }
 
-kernel_ByteArray* kernel_copy_script_pubkey_data(const kernel_ScriptPubkey* script_pubkey_)
+btck_ScriptPubkey* btck_script_pubkey_create(const void* script_pubkey, size_t script_pubkey_len)
 {
-    auto script_pubkey{cast_script_pubkey(script_pubkey_)};
-
-    auto byte_array{new kernel_ByteArray{
-        .data = new unsigned char[script_pubkey->size()],
-        .size = script_pubkey->size(),
-    }};
-
-    std::memcpy(byte_array->data, script_pubkey->data(), byte_array->size);
-    return byte_array;
+    auto data = std::span{reinterpret_cast<const uint8_t*>(script_pubkey), script_pubkey_len};
+    return new btck_ScriptPubkey{new CScript(data.begin(), data.end()), true};
 }
 
-void kernel_script_pubkey_destroy(kernel_ScriptPubkey* script_pubkey)
+int btck_script_pubkey_to_bytes(const btck_ScriptPubkey* script_pubkey, btck_WriteBytes writer, void* user_data)
 {
-    if (script_pubkey) {
-        delete cast_script_pubkey(script_pubkey);
+    return writer(script_pubkey->m_script->data(), script_pubkey->m_script->size(), user_data);
+}
+
+btck_ScriptPubkey* btck_script_pubkey_copy(const btck_ScriptPubkey* script_pubkey)
+{
+    return new btck_ScriptPubkey{new CScript(*script_pubkey->m_script), true};
+}
+
+void btck_script_pubkey_destroy(btck_ScriptPubkey* script_pubkey)
+{
+    if (!script_pubkey) return;
+    if (script_pubkey->m_owned) {
+        delete script_pubkey->m_script;
     }
+    delete script_pubkey;
+    script_pubkey = nullptr;
 }
 
-kernel_TransactionOutput* kernel_transaction_output_create(kernel_ScriptPubkey* script_pubkey_, int64_t amount)
+btck_TransactionOutput* btck_transaction_output_create(const btck_ScriptPubkey* script_pubkey, int64_t amount)
 {
-    const auto& script_pubkey{*cast_script_pubkey(script_pubkey_)};
     const CAmount& value{amount};
-    auto tx_out{new CTxOut(value, script_pubkey)};
-    return reinterpret_cast<kernel_TransactionOutput*>(tx_out);
+    return new btck_TransactionOutput{new CTxOut(value, *script_pubkey->m_script), true};
 }
 
-void kernel_transaction_output_destroy(kernel_TransactionOutput* output)
+btck_TransactionOutput* btck_transaction_output_copy(const btck_TransactionOutput* output)
 {
-    if (output) {
-        delete cast_transaction_output(output);
-    }
+    return new btck_TransactionOutput{new CTxOut{*output->m_txout}, true};
 }
 
-bool kernel_verify_script(const kernel_ScriptPubkey* script_pubkey_,
-                         const int64_t amount_,
-                         const kernel_Transaction* tx_to,
-                         const kernel_TransactionOutput** spent_outputs_, size_t spent_outputs_len,
-                         const unsigned int input_index,
-                         const unsigned int flags,
-                         kernel_ScriptVerifyStatus* status)
+btck_ScriptPubkey* btck_transaction_output_get_script_pubkey(const btck_TransactionOutput* output)
+{
+    const auto* script_pubkey{&output->m_txout->scriptPubKey};
+    return new btck_ScriptPubkey{script_pubkey, false};
+}
+
+int64_t btck_transaction_output_get_amount(const btck_TransactionOutput* output)
+{
+    return output->m_txout->nValue;
+}
+
+void btck_transaction_output_destroy(btck_TransactionOutput* output)
+{
+    if (!output) return;
+    if (output->m_owned) {
+        delete output->m_txout;
+    }
+    delete output;
+    output = nullptr;
+}
+
+int btck_script_pubkey_verify(const btck_ScriptPubkey* script_pubkey,
+                          const int64_t amount_,
+                          const btck_Transaction* tx_to,
+                          const btck_TransactionOutput** spent_outputs_, size_t spent_outputs_len,
+                          const unsigned int input_index,
+                          const btck_ScriptVerificationFlags flags,
+                          btck_ScriptVerifyStatus* status)
 {
     const CAmount amount{amount_};
-    const auto& script_pubkey{*cast_script_pubkey(script_pubkey_)};
 
-    if (!verify_flags(flags)) {
-        if (status) *status = kernel_SCRIPT_VERIFY_ERROR_INVALID_FLAGS;
-        return false;
-    }
+    // Assert that all specified flags are part of the interface before continuing
+    assert((flags & ~btck_ScriptVerificationFlags_ALL) == 0);
 
     if (!is_valid_flag_combination(flags)) {
-        if (status) *status = kernel_SCRIPT_VERIFY_ERROR_INVALID_FLAGS_COMBINATION;
-        return false;
+        if (status) *status = btck_ScriptVerifyStatus_ERROR_INVALID_FLAGS_COMBINATION;
+        return 0;
     }
 
-    if (flags & kernel_SCRIPT_FLAGS_VERIFY_TAPROOT && spent_outputs_ == nullptr) {
-        if (status) *status = kernel_SCRIPT_VERIFY_ERROR_SPENT_OUTPUTS_REQUIRED;
-        return false;
+    if (flags & btck_ScriptVerificationFlags_TAPROOT  && spent_outputs_ == nullptr) {
+        if (status) *status = btck_ScriptVerifyStatus_ERROR_SPENT_OUTPUTS_REQUIRED;
+        return 0;
     }
 
-    const CTransaction& tx{*cast_transaction(tx_to)};
+    const CTransaction& tx{*tx_to->m_tx};
     std::vector<CTxOut> spent_outputs;
     if (spent_outputs_ != nullptr) {
-        if (spent_outputs_len != tx.vin.size()) {
-            if (status) *status = kernel_SCRIPT_VERIFY_ERROR_SPENT_OUTPUTS_MISMATCH;
-            return false;
-        }
+        assert(spent_outputs_len == tx.vin.size());
         spent_outputs.reserve(spent_outputs_len);
         for (size_t i = 0; i < spent_outputs_len; i++) {
-            const CTxOut& tx_out{*reinterpret_cast<const CTxOut*>(spent_outputs_[i])};
+            const CTxOut& tx_out{*spent_outputs_[i]->m_txout};
             spent_outputs.push_back(tx_out);
         }
     }
 
-    if (input_index >= tx.vin.size()) {
-        if (status) *status = kernel_SCRIPT_VERIFY_ERROR_TX_INPUT_INDEX;
-        return false;
-    }
+    assert(input_index < tx.vin.size());
     PrecomputedTransactionData txdata{tx};
 
-    if (spent_outputs_ != nullptr && flags & kernel_SCRIPT_FLAGS_VERIFY_TAPROOT) {
+    if (spent_outputs_ != nullptr && flags & btck_ScriptVerificationFlags_TAPROOT) {
         txdata.Init(tx, std::move(spent_outputs));
     }
 
-    return VerifyScript(tx.vin[input_index].scriptSig,
-                        script_pubkey,
+    bool result = VerifyScript(tx.vin[input_index].scriptSig,
+                        *script_pubkey->m_script,
                         &tx.vin[input_index].scriptWitness,
                         flags,
                         TransactionSignatureChecker(&tx, input_index, amount, txdata, MissingDataBehavior::FAIL),
                         nullptr);
+    return result ? 1 : 0;
 }
 
-bool kernel_add_log_level_category(const kernel_LogCategory category, const kernel_LogLevel level_)
+void btck_logging_set_level_category(btck_LogCategory category, btck_LogLevel level)
 {
-    const auto level{log_level_to_string(level_)};
-    if (category == kernel_LogCategory::kernel_LOG_ALL) {
-        return LogInstance().SetLogLevel(level);
+    if (category == btck_LogCategory_ALL) {
+        LogInstance().SetLogLevel(get_bclog_level(level));
     }
 
-    return LogInstance().SetCategoryLogLevel(log_category_to_string(category), level);
+    LogInstance().AddCategoryLogLevel(get_bclog_flag(category), get_bclog_level(level));
 }
 
-bool kernel_enable_log_category(const kernel_LogCategory category)
+void btck_logging_enable_category(btck_LogCategory category)
 {
-    return LogInstance().EnableCategory(log_category_to_string(category));
+    LogInstance().EnableCategory(get_bclog_flag(category));
 }
 
-bool kernel_disable_log_category(const kernel_LogCategory category)
+void btck_logging_disable_category(btck_LogCategory category)
 {
-    return LogInstance().DisableCategory(log_category_to_string(category));
+    LogInstance().DisableCategory(get_bclog_flag(category));
 }
 
-void kernel_disable_logging()
+void btck_logging_disable()
 {
     LogInstance().DisableLogging();
 }
 
-kernel_LoggingConnection* kernel_logging_connection_create(kernel_LogCallback callback,
+btck_LoggingConnection* btck_logging_connection_create(btck_LogCallback callback,
                                                            void* user_data,
-                                                           const kernel_LoggingOptions options)
+                                                           btck_DestroyCallback user_data_destroy_callback,
+                                                           const btck_LoggingOptions options)
 {
     LogInstance().m_log_timestamps = options.log_timestamps;
     LogInstance().m_log_time_micros = options.log_time_micros;
@@ -570,399 +616,298 @@ kernel_LoggingConnection* kernel_logging_connection_create(kernel_LogCallback ca
     LogInstance().m_log_sourcelocations = options.log_sourcelocations;
     LogInstance().m_always_print_category_level = options.always_print_category_levels;
 
-    auto connection{LogInstance().PushBackCallback([callback, user_data](const std::string& str) { callback(user_data, str.c_str()); })};
+    auto connection{LogInstance().PushBackCallback([callback, user_data](const std::string& str) { callback((void*)user_data, str.c_str(), str.length()); })};
 
     try {
         // Only start logging if we just added the connection.
         if (LogInstance().NumConnections() == 1 && !LogInstance().StartLogging()) {
-            LogError("Logger start failed.\n");
+            LogError("Logger start failed.");
             LogInstance().DeleteCallback(connection);
+            user_data_destroy_callback(user_data);
             return nullptr;
         }
     } catch (std::exception& e) {
-        LogError("Logger start failed.\n");
+        LogError("Logger start failed: %s", e.what());
         LogInstance().DeleteCallback(connection);
+        user_data_destroy_callback(user_data);
         return nullptr;
     }
 
-    LogDebug(BCLog::KERNEL, "Logger connected.\n");
+    LogDebug(BCLog::KERNEL, "Logger connected.");
 
-    auto heap_connection{new std::list<std::function<void(const std::string&)>>::iterator(connection)};
-    return reinterpret_cast<kernel_LoggingConnection*>(heap_connection);
+    return new btck_LoggingConnection{std::make_unique<std::list<std::function<void(const std::string&)>>::iterator>(connection), user_data, user_data_destroy_callback};
 }
 
-void kernel_logging_connection_destroy(kernel_LoggingConnection* connection_)
+void btck_logging_connection_destroy(btck_LoggingConnection* connection)
 {
-    auto connection{reinterpret_cast<std::list<std::function<void(const std::string&)>>::iterator*>(connection_)};
     if (!connection) {
         return;
     }
 
-    LogDebug(BCLog::KERNEL, "Logger disconnected.\n");
-    LogInstance().DeleteCallback(*connection);
+    LogDebug(BCLog::KERNEL, "Logger disconnected.");
+    LogInstance().DeleteCallback(*connection->m_connection);
     delete connection;
 
-    // We are not buffering if we have a connection, so check that it is not the
-    // last available connection.
+    // Switch back to buffering by calling DisconnectTestLogger if the
+    // connection that was just removed was the last one.
     if (!LogInstance().Enabled()) {
         LogInstance().DisconnectTestLogger();
     }
+    connection = nullptr;
 }
 
-const kernel_ChainParameters* kernel_chain_parameters_create(const kernel_ChainType chain_type)
+btck_ChainParameters* btck_chain_parameters_create(const btck_ChainType chain_type)
 {
     switch (chain_type) {
-    case kernel_ChainType::kernel_CHAIN_TYPE_MAINNET: {
-        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::Main().release());
+    case btck_ChainType_MAINNET: {
+        return new btck_ChainParameters{CChainParams::Main()};
     }
-    case kernel_ChainType::kernel_CHAIN_TYPE_TESTNET: {
-        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::TestNet().release());
+    case btck_ChainType_TESTNET: {
+        return new btck_ChainParameters{CChainParams::TestNet()};
     }
-    case kernel_ChainType::kernel_CHAIN_TYPE_TESTNET_4: {
-        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::TestNet4().release());
+    case btck_ChainType_TESTNET_4: {
+        return new btck_ChainParameters{CChainParams::TestNet4()};
     }
-    case kernel_ChainType::kernel_CHAIN_TYPE_SIGNET: {
-        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::SigNet({}).release());
+    case btck_ChainType_SIGNET: {
+        return new btck_ChainParameters{CChainParams::SigNet({})};
     }
-    case kernel_ChainType::kernel_CHAIN_TYPE_REGTEST: {
-        return reinterpret_cast<const kernel_ChainParameters*>(CChainParams::RegTest({}).release());
+    case btck_ChainType_REGTEST: {
+        return new btck_ChainParameters{CChainParams::RegTest({})};
     }
-    } // no default case, so the compiler can warn about missing cases
+    }
     assert(false);
 }
 
-void kernel_chain_parameters_destroy(const kernel_ChainParameters* chain_parameters)
+void btck_chain_parameters_destroy(btck_ChainParameters* chain_parameters)
 {
-    if (chain_parameters) {
-        delete cast_const_chain_params(chain_parameters);
-    }
+    if (!chain_parameters) return;
+    delete chain_parameters;
+    chain_parameters = nullptr;
 }
 
-kernel_Notifications* kernel_notifications_create(kernel_NotificationInterfaceCallbacks callbacks)
+btck_ContextOptions* btck_context_options_create()
 {
-    return reinterpret_cast<kernel_Notifications*>(new KernelNotifications{callbacks});
+    return new btck_ContextOptions{std::make_unique<ContextOptions>()};
 }
 
-void kernel_notifications_destroy(const kernel_Notifications* notifications)
+void btck_context_options_set_chainparams(btck_ContextOptions* options, const btck_ChainParameters* chain_parameters)
 {
-    if (notifications) {
-        delete cast_const_notifications(notifications);
-    }
-}
-
-kernel_MempoolOptions* kernel_mempool_options_create()
-{
-    return reinterpret_cast<kernel_MempoolOptions*>(new CTxMemPool::Options{});
-}
-
-void kernel_mempool_options_destroy(const kernel_MempoolOptions* mempool_options)
-{
-    if (mempool_options) {
-        delete cast_const_mempool_options(mempool_options);
-    }
-}
-
-kernel_ContextOptions* kernel_context_options_create()
-{
-    return reinterpret_cast<kernel_ContextOptions*>(new ContextOptions{});
-}
-
-void kernel_context_options_set_chainparams(kernel_ContextOptions* options_, const kernel_ChainParameters* chain_parameters)
-{
-    auto options{cast_context_options(options_)};
-    auto chain_params{reinterpret_cast<const CChainParams*>(chain_parameters)};
     // Copy the chainparams, so the caller can free it again
-    options->m_chainparams = std::make_unique<const CChainParams>(*chain_params);
+    LOCK(options->m_opts->m_mutex);
+    options->m_opts->m_chainparams = std::make_unique<const CChainParams>(*chain_parameters->m_params);
 }
 
-void kernel_context_options_set_notifications(kernel_ContextOptions* options_, const kernel_Notifications* notifications_)
+void btck_context_options_set_notifications(btck_ContextOptions* options, btck_NotificationInterfaceCallbacks notifications)
 {
-    auto options{cast_context_options(options_)};
-    auto notifications{reinterpret_cast<const KernelNotifications*>(notifications_)};
-    // Copy the notifications, so the caller can free it again
-    options->m_notifications = std::make_unique<const KernelNotifications>(*notifications);
+    // The KernelNotifications are copy-initialized, so the caller can free them again.
+    LOCK(options->m_opts->m_mutex);
+    options->m_opts->m_notifications = std::make_shared<KernelNotifications>(notifications);
 }
 
-void kernel_context_options_set_mempool(kernel_ContextOptions* options_, const kernel_MempoolOptions* mempool_opts_)
+void btck_context_options_set_validation_interface(btck_ContextOptions* options, btck_ValidationInterfaceCallbacks vi_cbs)
 {
-    auto options{cast_context_options(options_)};
-    auto mempool_opts{reinterpret_cast<const CTxMemPool::Options*>(mempool_opts_)};
-    options->m_mempool_options = std::make_unique<const CTxMemPool::Options>(*mempool_opts);
+    LOCK(options->m_opts->m_mutex);
+    options->m_opts->m_validation_interface = std::make_shared<KernelValidationInterface>(vi_cbs);
 }
 
-void kernel_context_options_destroy(kernel_ContextOptions* options)
+void btck_context_options_destroy(btck_ContextOptions* options)
 {
-    if (options) {
-        delete cast_context_options(options);
-    }
+    if (!options) return;
+    delete options;
+    options = nullptr;
 }
 
-kernel_Context* kernel_context_create(const kernel_ContextOptions* options_)
+btck_Context* btck_context_create(const btck_ContextOptions* options)
 {
-    auto options{cast_const_context_options(options_)};
     bool sane{true};
-    auto context{new Context{options, sane}};
+    auto context{std::make_shared<Context>(options->m_opts.get(), sane)};
     if (!sane) {
-        LogError("Kernel context sanity check failed.\n");
-        delete context;
+        LogError("Kernel context sanity check failed.");
         return nullptr;
     }
-    return reinterpret_cast<kernel_Context*>(context);
+    return new btck_Context{std::move(context)};
 }
 
-bool kernel_context_interrupt(kernel_Context* context_)
+int btck_context_interrupt(btck_Context* context)
 {
-    auto& context{*cast_context(context_)};
-    return (*context.m_interrupt)();
+    return (*context->m_context->m_interrupt)() ? 0 : -1;
 }
 
-void kernel_context_destroy(kernel_Context* context)
+void btck_context_destroy(btck_Context* context)
 {
-    if (context) {
-        delete cast_context(context);
+    if (!context) return;
+    delete context;
+    context = nullptr;
+}
+
+btck_BlockTreeEntry* btck_block_tree_entry_get_previous(const btck_BlockTreeEntry* entry)
+{
+    if (!entry->m_block_index->pprev) {
+        LogInfo("Genesis block has no previous.");
+        return nullptr;
     }
+
+    return new btck_BlockTreeEntry{entry->m_block_index->pprev};
 }
 
-kernel_ValidationInterface* kernel_validation_interface_create(kernel_ValidationInterfaceCallbacks vi_cbs)
+void btck_block_tree_entry_destroy(btck_BlockTreeEntry* block_tree_entry)
 {
-    return reinterpret_cast<kernel_ValidationInterface*>(new std::shared_ptr<KernelValidationInterface>(new KernelValidationInterface(vi_cbs)));
+    if (!block_tree_entry) return;
+    delete block_tree_entry;
+    block_tree_entry = nullptr;
 }
 
-bool kernel_validation_interface_register(kernel_Context* context_, kernel_ValidationInterface* validation_interface_)
-{
-    auto context{cast_context(context_)};
-    auto validation_interface{cast_validation_interface(validation_interface_)};
-    if (!context->m_signals) {
-        LogError("Cannot register validation interface with context that has no validation signals.\n");
-        return false;
-    }
-    context->m_signals->RegisterSharedValidationInterface(*validation_interface);
-    return true;
-}
-
-bool kernel_validation_interface_unregister(kernel_Context* context_, kernel_ValidationInterface* validation_interface_)
-{
-    auto context{cast_context(context_)};
-    auto validation_interface{cast_validation_interface(validation_interface_)};
-    if (!context->m_signals) {
-        LogError("Cannot de-register validation interface with context that has no validation signals.\n");
-        return false;
-    }
-    context->m_signals->UnregisterSharedValidationInterface(*validation_interface);
-    return true;
-}
-
-void kernel_validation_interface_destroy(kernel_ValidationInterface* validation_interface)
-{
-    if (validation_interface) {
-        delete cast_validation_interface(validation_interface);
-    }
-}
-
-kernel_ValidationMode kernel_get_validation_mode_from_block_validation_state(const kernel_BlockValidationState* block_validation_state_)
+btck_ValidationMode btck_block_validation_state_get_validation_mode(const btck_BlockValidationState* block_validation_state_)
 {
     auto& block_validation_state = *cast_block_validation_state(block_validation_state_);
-    if (block_validation_state.IsValid()) return kernel_ValidationMode::kernel_VALIDATION_STATE_VALID;
-    if (block_validation_state.IsInvalid()) return kernel_ValidationMode::kernel_VALIDATION_STATE_INVALID;
-    return kernel_ValidationMode::kernel_VALIDATION_STATE_ERROR;
+    if (block_validation_state.IsValid()) return btck_ValidationMode_VALID;
+    if (block_validation_state.IsInvalid()) return btck_ValidationMode_INVALID;
+    return btck_ValidationMode_INTERNAL_ERROR;
 }
 
-kernel_BlockValidationResult kernel_get_block_validation_result_from_block_validation_state(const kernel_BlockValidationState* block_validation_state_)
+btck_BlockValidationResult btck_block_validation_state_get_block_validation_result(const btck_BlockValidationState* block_validation_state_)
 {
     auto& block_validation_state = *cast_block_validation_state(block_validation_state_);
     switch (block_validation_state.GetResult()) {
     case BlockValidationResult::BLOCK_RESULT_UNSET:
-        return kernel_BlockValidationResult::kernel_BLOCK_RESULT_UNSET;
+        return btck_BlockValidationResult_UNSET;
     case BlockValidationResult::BLOCK_CONSENSUS:
-        return kernel_BlockValidationResult::kernel_BLOCK_CONSENSUS;
+        return btck_BlockValidationResult_CONSENSUS;
     case BlockValidationResult::BLOCK_CACHED_INVALID:
-        return kernel_BlockValidationResult::kernel_BLOCK_CACHED_INVALID;
+        return btck_BlockValidationResult_CACHED_INVALID;
     case BlockValidationResult::BLOCK_INVALID_HEADER:
-        return kernel_BlockValidationResult::kernel_BLOCK_INVALID_HEADER;
+        return btck_BlockValidationResult_INVALID_HEADER;
     case BlockValidationResult::BLOCK_MUTATED:
-        return kernel_BlockValidationResult::kernel_BLOCK_MUTATED;
+        return btck_BlockValidationResult_MUTATED;
     case BlockValidationResult::BLOCK_MISSING_PREV:
-        return kernel_BlockValidationResult::kernel_BLOCK_MISSING_PREV;
+        return btck_BlockValidationResult_MISSING_PREV;
     case BlockValidationResult::BLOCK_INVALID_PREV:
-        return kernel_BlockValidationResult::kernel_BLOCK_INVALID_PREV;
+        return btck_BlockValidationResult_INVALID_PREV;
     case BlockValidationResult::BLOCK_TIME_FUTURE:
-        return kernel_BlockValidationResult::kernel_BLOCK_TIME_FUTURE;
-    case BlockValidationResult::BLOCK_CHECKPOINT:
-        return kernel_BlockValidationResult::kernel_BLOCK_CHECKPOINT;
+        return btck_BlockValidationResult_TIME_FUTURE;
     case BlockValidationResult::BLOCK_HEADER_LOW_WORK:
-        return kernel_BlockValidationResult::kernel_BLOCK_HEADER_LOW_WORK;
+        return btck_BlockValidationResult_HEADER_LOW_WORK;
     } // no default case, so the compiler can warn about missing cases
     assert(false);
 }
 
-kernel_ChainstateManagerOptions* kernel_chainstate_manager_options_create(const kernel_Context* context_, const char* data_dir)
+btck_ChainstateManagerOptions* btck_chainstate_manager_options_create(const btck_Context* context, const char* data_dir, size_t data_dir_len, const char* blocks_dir, size_t blocks_dir_len)
 {
     try {
-        fs::path abs_data_dir{fs::absolute(fs::PathFromString(data_dir))};
+        fs::path abs_data_dir{fs::absolute(fs::PathFromString({data_dir, data_dir_len}))};
         fs::create_directories(abs_data_dir);
-        auto context{cast_const_context(context_)};
-        return reinterpret_cast<kernel_ChainstateManagerOptions*>(new ChainstateManager::Options{
-            .chainparams = *context->m_chainparams,
-            .datadir = abs_data_dir,
-            .notifications = *context->m_notifications,
-            .signals = context->m_signals.get()});
+        fs::path abs_blocks_dir{fs::absolute(fs::PathFromString({blocks_dir, blocks_dir_len}))};
+        fs::create_directories(abs_blocks_dir);
+        auto chainman_opts{std::make_unique<ChainstateManagerOptions>(context->m_context, abs_data_dir, abs_blocks_dir)};
+        return new btck_ChainstateManagerOptions{std::move(chainman_opts)};
     } catch (const std::exception& e) {
-        LogError("Failed to create chainstate manager options: %s\n", e.what());
+        LogError("Failed to create chainstate manager options: %s", e.what());
         return nullptr;
     }
 }
 
-void kernel_chainstate_manager_options_destroy(kernel_ChainstateManagerOptions* options)
+void btck_chainstate_manager_options_set_worker_threads_num(btck_ChainstateManagerOptions* opts, int worker_threads)
 {
-    if (options) {
-        delete cast_chainstate_manager_options(options);
-    }
+    LOCK(opts->m_opts->m_mutex);
+    opts->m_opts->m_chainman_options.worker_threads_num = worker_threads;
 }
 
-kernel_BlockManagerOptions* kernel_block_manager_options_create(const kernel_Context* context_, const char* blocks_dir)
+void btck_chainstate_manager_options_destroy(btck_ChainstateManagerOptions* options)
 {
+    if (!options) return;
+    delete options;
+    options = nullptr;
+}
+
+int btck_chainstate_manager_options_set_wipe_dbs(btck_ChainstateManagerOptions* chainman_opts, int wipe_block_tree_db, int wipe_chainstate_db)
+{
+    if (wipe_block_tree_db == 1 && wipe_chainstate_db != 1) {
+        LogError("Wiping the block tree db without also wiping the chainstate db is currently unsupported.");
+        return -1;
+    }
+    LOCK(chainman_opts->m_opts->m_mutex);
+    chainman_opts->m_opts->m_blockman_options.block_tree_db_params.wipe_data = wipe_block_tree_db == 1;
+    chainman_opts->m_opts->m_chainstate_load_options.wipe_chainstate_db = wipe_chainstate_db == 1;
+    return 0;
+}
+
+void btck_chainstate_manager_options_set_block_tree_db_in_memory(
+    btck_ChainstateManagerOptions* chainman_opts,
+    int block_tree_db_in_memory)
+{
+    LOCK(chainman_opts->m_opts->m_mutex);
+    chainman_opts->m_opts->m_blockman_options.block_tree_db_params.memory_only = block_tree_db_in_memory == 1;
+}
+
+void btck_chainstate_manager_options_set_chainstate_db_in_memory(
+    btck_ChainstateManagerOptions* chainman_opts,
+    int chainstate_db_in_memory)
+{
+    LOCK(chainman_opts->m_opts->m_mutex);
+    chainman_opts->m_opts->m_chainstate_load_options.coins_db_in_memory = chainstate_db_in_memory == 1;
+}
+
+btck_ChainstateManager* btck_chainstate_manager_create(
+    const btck_ChainstateManagerOptions* chainman_opts)
+{
+    std::unique_ptr<ChainstateManager> chainman;
     try {
-        fs::path abs_blocks_dir{fs::absolute(fs::PathFromString(blocks_dir))};
-        fs::create_directories(abs_blocks_dir);
-        auto context{cast_const_context(context_)};
-        if (!context) {
+        LOCK(chainman_opts->m_opts->m_mutex);
+        auto& context{chainman_opts->m_opts->m_context};
+        chainman = std::make_unique<ChainstateManager>(*context->m_interrupt, chainman_opts->m_opts->m_chainman_options, chainman_opts->m_opts->m_blockman_options);
+    } catch (const std::exception& e) {
+        LogError("Failed to create chainstate manager: %s", e.what());
+        return nullptr;
+    }
+
+    try {
+        const auto chainstate_load_opts{WITH_LOCK(chainman_opts->m_opts->m_mutex, return chainman_opts->m_opts->m_chainstate_load_options)};
+
+        kernel::CacheSizes cache_sizes{DEFAULT_KERNEL_CACHE};
+        auto [status, chainstate_err]{node::LoadChainstate(*chainman, cache_sizes, chainstate_load_opts)};
+        if (status != node::ChainstateLoadStatus::SUCCESS) {
+            LogError("Failed to load chain state from your data directory: %s", chainstate_err.original);
             return nullptr;
         }
-        return reinterpret_cast<kernel_BlockManagerOptions*>(new node::BlockManager::Options{
-            .chainparams = *context->m_chainparams,
-            .blocks_dir = abs_blocks_dir,
-            .notifications = *context->m_notifications});
-    } catch (const std::exception& e) {
-        LogError("Failed to create block manager options; %s\n", e.what());
-        return nullptr;
-    }
-}
-
-void kernel_block_manager_options_destroy(kernel_BlockManagerOptions* options)
-{
-    if (options) {
-        delete cast_block_manager_options(options);
-    }
-}
-
-kernel_ChainstateManager* kernel_chainstate_manager_create(
-    kernel_ChainstateManagerOptions* chainman_opts_,
-    kernel_BlockManagerOptions* blockman_opts_,
-    const kernel_Context* context_)
-{
-    auto chainman_opts{cast_chainstate_manager_options(chainman_opts_)};
-    auto blockman_opts{cast_block_manager_options(blockman_opts_)};
-    auto context{cast_const_context(context_)};
-
-    try {
-        return reinterpret_cast<kernel_ChainstateManager*>(new ChainstateManager{*context->m_interrupt, *chainman_opts, *blockman_opts});
-    } catch (const std::exception& e) {
-        LogError("Failed to create chainstate manager: %s\n", e.what());
-        return nullptr;
-    }
-}
-
-kernel_ChainstateLoadOptions* kernel_chainstate_load_options_create()
-{
-    return reinterpret_cast<kernel_ChainstateLoadOptions*>(new node::ChainstateLoadOptions);
-}
-
-
-void kernel_chainstate_load_options_set_wipe_block_tree_db(
-    kernel_ChainstateLoadOptions* chainstate_load_opts_,
-    bool wipe_block_tree_db)
-{
-    auto chainstate_load_opts{cast_chainstate_load_options(chainstate_load_opts_)};
-    chainstate_load_opts->wipe_block_tree_db = wipe_block_tree_db;
-}
-
-void kernel_chainstate_load_options_set_wipe_chainstate_db(
-    kernel_ChainstateLoadOptions* chainstate_load_opts_,
-    bool wipe_chainstate_db)
-{
-    auto chainstate_load_opts{cast_chainstate_load_options(chainstate_load_opts_)};
-    chainstate_load_opts->wipe_chainstate_db = wipe_chainstate_db;
-}
-
-void kernel_chainstate_load_options_set_block_tree_db_in_memory(
-    kernel_ChainstateLoadOptions* chainstate_load_opts_,
-    bool block_tree_db_in_memory)
-{
-    auto chainstate_load_opts{cast_chainstate_load_options(chainstate_load_opts_)};
-    chainstate_load_opts->block_tree_db_in_memory = block_tree_db_in_memory;
-}
-
-void kernel_chainstate_load_options_set_chainstate_db_in_memory(
-    kernel_ChainstateLoadOptions* chainstate_load_opts_,
-    bool chainstate_db_in_memory)
-{
-    auto chainstate_load_opts{cast_chainstate_load_options(chainstate_load_opts_)};
-    chainstate_load_opts->coins_db_in_memory = chainstate_db_in_memory;
-}
-
-void kernel_chainstate_load_options_destroy(kernel_ChainstateLoadOptions* chainstate_load_opts)
-{
-    if (chainstate_load_opts) {
-        delete cast_chainstate_load_options(chainstate_load_opts);
-    }
-}
-
-bool kernel_chainstate_manager_load_chainstate(const kernel_Context* context_,
-                                               kernel_ChainstateLoadOptions* chainstate_load_opts_,
-                                               kernel_ChainstateManager* chainman_)
-{
-    try {
-        auto& chainstate_load_opts{*cast_chainstate_load_options(chainstate_load_opts_)};
-        auto& chainman{*cast_chainstate_manager(chainman_)};
-        auto& context{*cast_const_context(context_)};
-
-        if (chainstate_load_opts.wipe_block_tree_db && !chainstate_load_opts.wipe_chainstate_db) {
-            LogError("Wiping the block tree db without also wiping the chainstate db is currently unsupported.\n");
-            return false;
-        }
-
-        if (context.m_mempool) {
-            chainstate_load_opts.mempool = context.m_mempool.get();
-        }
-
-        node::CacheSizes cache_sizes;
-        cache_sizes.block_tree_db = 2 << 20;
-        cache_sizes.coins_db = 2 << 22;
-        cache_sizes.coins = (450 << 20) - (2 << 20) - (2 << 22);
-        auto [status, chainstate_err]{node::LoadChainstate(chainman, cache_sizes, chainstate_load_opts)};
+        std::tie(status, chainstate_err) = node::VerifyLoadedChainstate(*chainman, chainstate_load_opts);
         if (status != node::ChainstateLoadStatus::SUCCESS) {
-            LogError("Failed to load chain state from your data directory: %s\n", chainstate_err.original);
-            return false;
-        }
-        std::tie(status, chainstate_err) = node::VerifyLoadedChainstate(chainman, chainstate_load_opts);
-        if (status != node::ChainstateLoadStatus::SUCCESS) {
-            LogError("Failed to verify loaded chain state from your datadir: %s\n", chainstate_err.original);
-            return false;
+            LogError("Failed to verify loaded chain state from your datadir: %s", chainstate_err.original);
+            return nullptr;
         }
 
-        for (Chainstate* chainstate : WITH_LOCK(::cs_main, return chainman.GetAll())) {
+        for (Chainstate* chainstate : WITH_LOCK(chainman->GetMutex(), return chainman->GetAll())) {
             BlockValidationState state;
             if (!chainstate->ActivateBestChain(state, nullptr)) {
-                LogError("Failed to connect best block: %s\n", state.ToString());
-                return false;
+                LogError("Failed to connect best block: %s", state.ToString());
+                return nullptr;
             }
         }
     } catch (const std::exception& e) {
-        LogError("Failed to load chainstate: %s\n", e.what());
-        return false;
+        LogError("Failed to load chainstate: %s", e.what());
+        return nullptr;
     }
-    return true;
+
+    return new btck_ChainstateManager{std::move(chainman), chainman_opts->m_opts->m_context};
 }
 
-void kernel_chainstate_manager_destroy(kernel_ChainstateManager* chainman_, const kernel_Context* context_)
+btck_BlockTreeEntry* btck_chainstate_manager_get_block_tree_entry_by_hash(const btck_ChainstateManager* chainman, const btck_BlockHash* block_hash)
 {
-    if (!chainman_) return;
+    auto hash = uint256{std::span<const unsigned char>{(*block_hash).hash, 32}};
+    auto block_index = WITH_LOCK(chainman->m_chainman->GetMutex(), return chainman->m_chainman->m_blockman.LookupBlockIndex(hash));
+    if (!block_index) {
+        LogDebug(BCLog::KERNEL, "A block with the given hash is not indexed.");
+        return nullptr;
+    }
+    return new btck_BlockTreeEntry{block_index};
+}
 
-    auto chainman{cast_chainstate_manager(chainman_)};
+void btck_chainstate_manager_destroy(btck_ChainstateManager* chainman)
+{
+    if (!chainman) return;
 
     {
-        LOCK(cs_main);
-        for (Chainstate* chainstate : chainman->GetAll()) {
+        LOCK(chainman->m_chainman->GetMutex());
+        for (Chainstate* chainstate : chainman->m_chainman->GetAll()) {
             if (chainstate->CanFlushToDisk()) {
                 chainstate->ForceFlushStateToDisk();
                 chainstate->ResetCoinsViews();
@@ -971,506 +916,256 @@ void kernel_chainstate_manager_destroy(kernel_ChainstateManager* chainman_, cons
     }
 
     delete chainman;
-    return;
+    chainman = nullptr;
 }
 
-bool kernel_import_blocks(const kernel_Context* context_,
-                          kernel_ChainstateManager* chainman_,
-                          const char** block_file_paths,
-                          size_t block_file_paths_len)
+int btck_chainstate_manager_import_blocks(btck_ChainstateManager* chainman, const char** block_file_paths, size_t* block_file_paths_lens, size_t block_file_paths_len)
 {
     try {
-        auto chainman{cast_chainstate_manager(chainman_)};
         std::vector<fs::path> import_files;
         import_files.reserve(block_file_paths_len);
         for (uint32_t i = 0; i < block_file_paths_len; i++) {
             if (block_file_paths[i] != nullptr) {
-                import_files.emplace_back(block_file_paths[i]);
+                import_files.emplace_back(std::string{block_file_paths[i], block_file_paths_lens[i]}.c_str());
             }
         }
-        node::ImportBlocks(*chainman, import_files);
-        chainman->ActiveChainstate().ForceFlushStateToDisk();
+        node::ImportBlocks(*chainman->m_chainman, import_files);
+        chainman->m_chainman->ActiveChainstate().ForceFlushStateToDisk();
     } catch (const std::exception& e) {
-        LogError("Failed to import blocks: %s\n", e.what());
-        return false;
+        LogError("Failed to import blocks: %s", e.what());
+        return -1;
     }
-    return true;
+    return 0;
 }
 
-kernel_Block* kernel_block_create(const unsigned char* raw_block, size_t raw_block_length)
+btck_Block* btck_block_create(const void* raw_block, size_t raw_block_length)
 {
-    auto block{new CBlock()};
+    auto block{std::make_shared<CBlock>()};
 
-    DataStream stream{std::span{raw_block, raw_block_length}};
+    DataStream stream{std::span{reinterpret_cast<const std::byte*>(raw_block), raw_block_length}};
 
     try {
         stream >> TX_WITH_WITNESS(*block);
-    } catch (const std::exception& e) {
-        delete block;
-        LogDebug(BCLog::KERNEL, "Block decode failed.\n");
+    } catch (...) {
+        LogDebug(BCLog::KERNEL, "Block decode failed.");
         return nullptr;
     }
 
-    return reinterpret_cast<kernel_Block*>(new std::shared_ptr<CBlock>(block));
+    return new btck_Block{std::move(block)};
 }
 
-void kernel_byte_array_destroy(kernel_ByteArray* byte_array)
+btck_Block* btck_block_copy(const btck_Block* block)
 {
-    if (byte_array && byte_array->data) delete[] byte_array->data;
-    if (byte_array) delete byte_array;
+    return new btck_Block{block->m_block};
 }
 
-kernel_ByteArray* kernel_copy_block_data(kernel_Block* block_)
+size_t btck_block_count_transactions(const btck_Block* block)
 {
-    auto block{cast_cblocksharedpointer(block_)};
-
-    DataStream ss{};
-    ss << TX_WITH_WITNESS(**block);
-
-    auto byte_array{new kernel_ByteArray{
-        .data = new unsigned char[ss.size()],
-        .size = ss.size(),
-    }};
-
-    std::memcpy(byte_array->data, ss.data(), byte_array->size);
-
-    return byte_array;
+    return block->m_block->vtx.size();
 }
 
-kernel_ByteArray* kernel_copy_block_pointer_data(const kernel_BlockPointer* block_)
+btck_Transaction* btck_block_get_transaction_at(const btck_Block* block, size_t index)
 {
-    auto block{cast_const_cblock(block_)};
-
-    DataStream ss{};
-    ss << TX_WITH_WITNESS(*block);
-
-    auto byte_array{new kernel_ByteArray{
-        .data = new unsigned char[ss.size()],
-        .size = ss.size(),
-    }};
-
-    std::memcpy(byte_array->data, ss.data(), byte_array->size);
-
-    return byte_array;
+    assert(index < block->m_block->vtx.size());
+    return new btck_Transaction{block->m_block->vtx[index]};
 }
 
-kernel_BlockHash* kernel_block_get_hash(kernel_Block* block_)
+int btck_block_to_bytes(const btck_Block* block, btck_WriteBytes writer, void* user_data)
 {
-    auto block{cast_cblocksharedpointer(block_)};
-    auto hash{(*block)->GetHash()};
-    auto block_hash = new kernel_BlockHash{};
+    try {
+        WriterStream ws{writer, user_data};
+        ws << TX_WITH_WITNESS(*block->m_block);
+        return 0;
+    } catch (...) {
+        return -1;
+    }
+}
+
+btck_BlockHash* btck_block_get_hash(const btck_Block* block)
+{
+    auto hash{block->m_block->GetHash()};
+    auto block_hash = new btck_BlockHash{};
     std::memcpy(block_hash->hash, hash.begin(), sizeof(hash));
     return block_hash;
 }
 
-kernel_BlockHash* kernel_block_pointer_get_hash(const kernel_BlockPointer* block_)
+void btck_block_destroy(btck_Block* block)
 {
-    auto block{cast_const_cblock(block_)};
-    auto hash{block->GetHash()};
-    auto block_hash = new kernel_BlockHash{};
-    std::memcpy(block_hash->hash, hash.begin(), sizeof(hash));
+    if (!block) return;
+    delete block;
+    block = nullptr;
+}
+
+btck_Block* btck_block_read(const btck_ChainstateManager* chainman, const btck_BlockTreeEntry* entry)
+{
+    auto block{std::shared_ptr<CBlock>(new CBlock{})};
+    if (!chainman->m_chainman->m_blockman.ReadBlock(*block, *entry->m_block_index)) {
+        LogError("Failed to read block.");
+        return nullptr;
+    }
+    return new btck_Block{block};
+}
+
+int32_t btck_block_tree_entry_get_height(const btck_BlockTreeEntry* entry)
+{
+    return entry->m_block_index->nHeight;
+}
+
+btck_BlockHash* btck_block_tree_entry_get_block_hash(const btck_BlockTreeEntry* entry)
+{
+    if (entry->m_block_index->phashBlock == nullptr) {
+        return nullptr;
+    }
+    auto block_hash = new btck_BlockHash{};
+    std::memcpy(block_hash->hash, entry->m_block_index->phashBlock->begin(), sizeof(*entry->m_block_index->phashBlock));
     return block_hash;
 }
 
-void kernel_block_destroy(kernel_Block* block)
-{
-    if (block) {
-        delete cast_cblocksharedpointer(block);
-    }
-}
-
-kernel_BlockIndex* kernel_get_block_index_from_tip(const kernel_Context* context_, kernel_ChainstateManager* chainman_)
-{
-    auto chainman{cast_chainstate_manager(chainman_)};
-    return reinterpret_cast<kernel_BlockIndex*>(WITH_LOCK(::cs_main, return chainman->ActiveChain().Tip()));
-}
-
-kernel_BlockIndex* kernel_get_block_index_from_genesis(const kernel_Context* context_, kernel_ChainstateManager* chainman_)
-{
-    auto chainman{cast_chainstate_manager(chainman_)};
-    return reinterpret_cast<kernel_BlockIndex*>(WITH_LOCK(::cs_main, return chainman->ActiveChain().Genesis()));
-}
-
-kernel_BlockIndex* kernel_get_block_index_by_hash(const kernel_Context* context_, kernel_ChainstateManager* chainman_, kernel_BlockHash* block_hash)
-{
-    auto chainman{cast_chainstate_manager(chainman_)};
-
-    auto hash = uint256{Span<const unsigned char>{(*block_hash).hash, 32}};
-    auto block_index = WITH_LOCK(::cs_main, return chainman->m_blockman.LookupBlockIndex(hash));
-    if (!block_index) {
-        LogDebug(BCLog::KERNEL, "A block with the given hash is not indexed.\n");
-        return nullptr;
-    }
-    return reinterpret_cast<kernel_BlockIndex*>(block_index);
-}
-
-kernel_BlockIndex* kernel_get_block_index_by_height(const kernel_Context* context_, kernel_ChainstateManager* chainman_, int height)
-{
-    auto chainman{cast_chainstate_manager(chainman_)};
-
-    LOCK(cs_main);
-
-    if (height < 0 || height > chainman->ActiveChain().Height()) {
-        LogDebug(BCLog::KERNEL, "Block height is out of range.\n");
-        return nullptr;
-    }
-    return reinterpret_cast<kernel_BlockIndex*>(chainman->ActiveChain()[height]);
-}
-
-kernel_BlockIndex* kernel_get_next_block_index(const kernel_Context* context_, kernel_BlockIndex* block_index_, kernel_ChainstateManager* chainman_)
-{
-    auto block_index{cast_block_index(block_index_)};
-    auto chainman{cast_chainstate_manager(chainman_)};
-
-    auto next_block_index{WITH_LOCK(::cs_main, return chainman->ActiveChain().Next(block_index))};
-
-    if (!next_block_index) {
-        LogTrace(BCLog::KERNEL, "The block index is the tip of the current chain, it does not have a next.\n");
-    }
-
-    return reinterpret_cast<kernel_BlockIndex*>(next_block_index);
-}
-
-kernel_BlockIndex* kernel_get_previous_block_index(kernel_BlockIndex* block_index_)
-{
-    CBlockIndex* block_index{cast_block_index(block_index_)};
-
-    if (!block_index->pprev) {
-        LogTrace(BCLog::KERNEL, "The block index is the genesis, it has no previous.\n");
-        return nullptr;
-    }
-
-    return reinterpret_cast<kernel_BlockIndex*>(block_index->pprev);
-}
-
-kernel_Block* kernel_read_block_from_disk(const kernel_Context* context_,
-                                          kernel_ChainstateManager* chainman_,
-                                          kernel_BlockIndex* block_index_)
-{
-    auto chainman{cast_chainstate_manager(chainman_)};
-    CBlockIndex* block_index{cast_block_index(block_index_)};
-
-    auto block{new std::shared_ptr<CBlock>(new CBlock{})};
-    if (!chainman->m_blockman.ReadBlockFromDisk(**block, *block_index)) {
-        LogError("Failed to read block from disk.\n");
-        return nullptr;
-    }
-    return reinterpret_cast<kernel_Block*>(block);
-}
-
-kernel_BlockUndo* kernel_read_block_undo_from_disk(const kernel_Context* context_,
-                                                   kernel_ChainstateManager* chainman_,
-                                                   kernel_BlockIndex* block_index_)
-{
-    auto chainman{cast_chainstate_manager(chainman_)};
-    auto block_index{cast_block_index(block_index_)};
-
-    if (block_index->nHeight < 1) {
-        LogError("The genesis block does not have undo data.\n");
-        return nullptr;
-    }
-    auto block_undo{new CBlockUndo{}};
-    if (!chainman->m_blockman.UndoReadFromDisk(*block_undo, *block_index)) {
-        LogError("Failed to read undo data from disk.\n");
-        return nullptr;
-    }
-    return reinterpret_cast<kernel_BlockUndo*>(block_undo);
-}
-
-void kernel_block_index_destroy(kernel_BlockIndex* block_index)
-{
-    // This is just a dummy function. The user does not control block index memory.
-    return;
-}
-
-uint64_t kernel_block_undo_size(kernel_BlockUndo* block_undo_)
-{
-    auto block_undo{cast_block_undo(block_undo_)};
-    return block_undo->vtxundo.size();
-}
-
-void kernel_block_undo_destroy(kernel_BlockUndo* block_undo)
-{
-    if (block_undo) {
-        delete cast_block_undo(block_undo);
-    }
-}
-
-uint64_t kernel_get_transaction_undo_size(kernel_BlockUndo* block_undo_, uint64_t transaction_undo_index)
-{
-    auto block_undo{cast_block_undo(block_undo_)};
-    return block_undo->vtxundo[transaction_undo_index].vprevout.size();
-}
-
-kernel_TransactionOutput* kernel_get_undo_output_by_index(kernel_BlockUndo* block_undo_,
-                                                          uint64_t transaction_undo_index,
-                                                          uint64_t output_index)
-{
-    auto block_undo{cast_block_undo(block_undo_)};
-
-    if (transaction_undo_index >= block_undo->vtxundo.size()) {
-        LogInfo("transaction undo index is out of bounds.\n");
-        return nullptr;
-    }
-
-    const auto& tx_undo = block_undo->vtxundo[transaction_undo_index];
-
-    if (output_index >= tx_undo.vprevout.size()) {
-        LogInfo("previous output index is out of bounds.\n");
-        return nullptr;
-    }
-
-    CTxOut* prevout{new CTxOut{tx_undo.vprevout.at(output_index).out}};
-    return reinterpret_cast<kernel_TransactionOutput*>(prevout);
-}
-
-int32_t kernel_block_index_get_height(kernel_BlockIndex* block_index_)
-{
-    auto block_index{cast_block_index(block_index_)};
-    return block_index->nHeight;
-}
-
-kernel_BlockHash* kernel_block_index_get_block_hash(kernel_BlockIndex* block_index_)
-{
-    auto block_index{cast_block_index(block_index_)};
-    if (block_index->phashBlock == nullptr) {
-        return nullptr;
-    }
-    auto block_hash = new kernel_BlockHash{};
-    std::memcpy(block_hash->hash, block_index->phashBlock->begin(), sizeof(*block_index->phashBlock));
-    return block_hash;
-}
-
-void kernel_block_hash_destroy(kernel_BlockHash* hash)
+void btck_block_hash_destroy(btck_BlockHash* hash)
 {
     if (hash) delete hash;
+    hash = nullptr;
 }
 
-kernel_ScriptPubkey* kernel_copy_script_pubkey_from_output(kernel_TransactionOutput* output_)
+btck_BlockSpentOutputs* btck_block_spent_outputs_read(const btck_ChainstateManager* chainman, const btck_BlockTreeEntry* entry)
 {
-    auto output{cast_transaction_output(output_)};
-    auto script_pubkey = new CScript{output->scriptPubKey};
-    return reinterpret_cast<kernel_ScriptPubkey*>(script_pubkey);
-}
-
-int64_t kernel_get_transaction_output_amount(kernel_TransactionOutput* output_)
-{
-    auto output{cast_transaction_output(output_)};
-    return output->nValue;
-}
-
-bool kernel_chainstate_manager_process_block_header(const kernel_Context* context_, kernel_ChainstateManager* chainman_, kernel_BlockHeader* header_)
-{
-    auto& chainman{*cast_chainstate_manager(chainman_)};
-    auto header{cast_block_header(header_)};
-
-    std::vector<CBlockHeader> headers{*header};
-    BlockValidationState state;
-    return chainman.ProcessNewBlockHeaders(headers, true, state);
-}
-
-bool kernel_chainstate_manager_process_transaction(
-    const kernel_Context* context,
-    kernel_ChainstateManager* chainman_,
-    kernel_Transaction* transaction_,
-    bool test_accept)
-{
-    auto& chainman{*cast_chainstate_manager(chainman_)};
-    auto transaction{std::make_shared<const CTransaction>(*cast_transaction(transaction_))};
-
-    LogInfo("Tx: %s\n", transaction->GetHash().ToString());
-
-    MempoolAcceptResult res = WITH_LOCK(::cs_main, return chainman.ProcessTransaction(transaction, test_accept));
-
-    return res.m_result_type ==  MempoolAcceptResult::ResultType::VALID;
-}
-
-bool kernel_chainstate_manager_process_block(
-    const kernel_Context* context_,
-    kernel_ChainstateManager* chainman_,
-    kernel_Block* block_,
-    bool* new_block)
-{
-    auto& chainman{*cast_chainstate_manager(chainman_)};
-
-    auto blockptr{cast_cblocksharedpointer(block_)};
-
-    return chainman.ProcessNewBlock(*blockptr, /*force_processing=*/true, /*min_pow_checked=*/true, /*new_block=*/new_block);
-}
-
-kernel_CoinsViewCursor* kernel_chainstate_coins_cursor_create(kernel_ChainstateManager* chainman_)
-{
-    auto chainman{cast_chainstate_manager(chainman_)};
-
-    std::unique_ptr<CCoinsViewCursor> cursor{};
-    {
-        chainman->ActiveChainstate().ForceFlushStateToDisk();
-        cursor = WITH_LOCK(::cs_main, return chainman->ActiveChainstate().CoinsDB()).Cursor();
-        if (!cursor->Valid()) {
-            LogError("Cursor is not valid, probably the chainstate is not initialized correctly.\n");
-            return nullptr;
-        }
-    }
-    return reinterpret_cast<kernel_CoinsViewCursor*>(cursor.release());
-}
-
-bool kernel_coins_cursor_next(kernel_CoinsViewCursor* cursor_)
-{
-    auto cursor{cast_coins_view_cursor(cursor_)};
-    cursor->Next();
-    return cursor->Valid();
-}
-
-kernel_OutPoint* kernel_coins_cursor_get_key(kernel_CoinsViewCursor* cursor_)
-{
-    auto cursor{cast_coins_view_cursor(cursor_)};
-    COutPoint key;
-    {
-        LOCK(cs_main);
-        if (!cursor->Valid()) {
-            LogDebug(BCLog::KERNEL, "Cursor is not valid, probably iterated out of bounds.\n");
-            return nullptr;
-        }
-        cursor->GetKey(key);
-    }
-
-    kernel_OutPoint* out_point{ new kernel_OutPoint{
-        .hash = {},
-        .n = key.n,
-    }};
-    std::memcpy(out_point->hash, key.hash.data(), sizeof(out_point->hash));
-    return out_point;
-}
-
-kernel_TransactionOutput* kernel_coins_cursor_get_value(kernel_CoinsViewCursor* cursor_)
-{
-    auto cursor{cast_coins_view_cursor(cursor_)};
-
-    Coin coin;
-    {
-        LOCK(cs_main);
-        if (!cursor->Valid()) {
-            LogDebug(BCLog::KERNEL, "Cursor is not valid, probably iterated out of bounds.\n");
-            return nullptr;
-        }
-        if (!cursor->GetValue(coin)) return nullptr;
-    }
-
-    std::unique_ptr<unsigned char[]> byte_array(new unsigned char[coin.out.scriptPubKey.size()]);
-    std::copy(coin.out.scriptPubKey.begin(), coin.out.scriptPubKey.end(), byte_array.get());
-
-    return reinterpret_cast<kernel_TransactionOutput*>(new CTxOut{coin.out});
-}
-
-void kernel_coins_cursor_destroy(kernel_CoinsViewCursor* cursor)
-{
-    if (!cursor) {
-        return;
-    }
-    delete cast_coins_view_cursor(cursor);
-}
-
-kernel_TransactionOutput* kernel_get_output_by_out_point(kernel_ChainstateManager* chainman_, const kernel_OutPoint* out_point)
-{
-    auto chainman{cast_chainstate_manager(chainman_)};
-    std::optional<Coin> coin = std::nullopt;
-    COutPoint key{Txid::FromUint256(uint256{out_point->hash}), out_point->n };
-    {
-        LOCK(cs_main);
-        if (!chainman->ActiveChainstate().CoinsDB().HaveCoin(key)) {
-            LogDebug(BCLog::KERNEL, "Out point has no entry in coins db");
-            return nullptr;
-        }
-        coin = chainman->ActiveChainstate().CoinsDB().GetCoin(key);
-    }
-
-    if (!coin) {
-        LogDebug(BCLog::KERNEL, "Failed to retrieve coin entry from coins db");
+    if (entry->m_block_index->nHeight < 1) {
+        LogDebug(BCLog::KERNEL, "The genesis block does not have any spent outputs.");
         return nullptr;
     }
-
-    std::unique_ptr<unsigned char[]> byte_array(new unsigned char[coin.value().out.scriptPubKey.size()]);
-    std::copy(coin.value().out.scriptPubKey.begin(), coin.value().out.scriptPubKey.end(), byte_array.get());
-
-    return reinterpret_cast<kernel_TransactionOutput*>(new CTxOut{coin.value().out});
-}
-
-void kernel_out_point_destroy(kernel_OutPoint* out_point)
-{
-    if (out_point) delete out_point;
-}
-
-kernel_BlockHeader* kernel_get_block_header(kernel_Block* block_)
-{
-    auto block{cast_cblocksharedpointer(block_)};
-    return reinterpret_cast<kernel_BlockHeader*>(new CBlockHeader{(*block)->GetBlockHeader()});
-}
-
-kernel_BlockHeader* kernel_block_header_create(const unsigned char* raw_block_header, size_t raw_block_header_len)
-{
-    auto header{new CBlockHeader{}};
-
-    DataStream stream{Span{raw_block_header, raw_block_header_len}};
-
-    try {
-        stream >> *header;
-    } catch (const std::exception& e) {
-        delete header;
-        LogError("Block header decode failed.\n");
+    auto block_undo{std::make_shared<CBlockUndo>()};
+    if (!chainman->m_chainman->m_blockman.ReadBlockUndo(*block_undo, *entry->m_block_index)) {
+        LogError("Failed to read block spent outputs data.");
         return nullptr;
     }
-
-    return reinterpret_cast<kernel_BlockHeader*>(header);
+    return new btck_BlockSpentOutputs{std::move(block_undo)};
 }
 
-void kernel_block_header_destroy(kernel_BlockHeader* header)
+btck_BlockSpentOutputs* btck_block_spent_outputs_copy(const btck_BlockSpentOutputs* block_spent_outputs)
 {
-    if (header) {
-        delete cast_block_header(header);
+    return new btck_BlockSpentOutputs{block_spent_outputs->m_block_undo};
+}
+
+size_t btck_block_spent_outputs_count(const btck_BlockSpentOutputs* block_spent_outputs)
+{
+    return block_spent_outputs->m_block_undo->vtxundo.size();
+}
+
+btck_TransactionSpentOutputs* btck_block_spent_outputs_get_transaction_spent_outputs_at(const btck_BlockSpentOutputs* block_spent_outputs, size_t transaction_index)
+{
+    assert(transaction_index < block_spent_outputs->m_block_undo->vtxundo.size());
+    const auto* tx_undo{&block_spent_outputs->m_block_undo->vtxundo.at(transaction_index)};
+    return new btck_TransactionSpentOutputs{tx_undo, false};
+}
+
+void btck_block_spent_outputs_destroy(btck_BlockSpentOutputs* block_spent_outputs)
+{
+    if (!block_spent_outputs) return;
+    delete block_spent_outputs;
+    block_spent_outputs = nullptr;
+}
+
+btck_TransactionSpentOutputs* btck_transaction_spent_outputs_copy(const btck_TransactionSpentOutputs* transaction_spent_outputs)
+{
+    return new btck_TransactionSpentOutputs{new CTxUndo{*transaction_spent_outputs->m_tx_undo}, true};
+}
+
+size_t btck_transaction_spent_outputs_count(const btck_TransactionSpentOutputs* transaction_spent_outputs)
+{
+    return transaction_spent_outputs->m_tx_undo->vprevout.size();
+}
+
+void btck_transaction_spent_outputs_destroy(btck_TransactionSpentOutputs* transaction_spent_outputs)
+{
+    if (!transaction_spent_outputs) return;
+    if (transaction_spent_outputs->m_owned) {
+        delete transaction_spent_outputs->m_tx_undo;
     }
+    delete transaction_spent_outputs;
+    transaction_spent_outputs = nullptr;
 }
 
-kernel_ByteArray* kernel_copy_block_header_data(kernel_BlockHeader* header_)
+btck_Coin* btck_transaction_spent_outputs_get_coin_at(const btck_TransactionSpentOutputs* transaction_spent_outputs, size_t coin_index)
 {
-    auto header{cast_block_header(header_)};
-
-    DataStream ss{};
-    ss << *header;
-
-    auto byte_array{new kernel_ByteArray{
-        .data = new unsigned char[ss.size()],
-        .size = ss.size(),
-    }};
-
-    std::memcpy(byte_array->data, ss.data(), byte_array->size);
-
-    return byte_array;
+    assert(coin_index < transaction_spent_outputs->m_tx_undo->vprevout.size());
+    const Coin* coin{&transaction_spent_outputs->m_tx_undo->vprevout.at(coin_index)};
+    return new btck_Coin{coin, false};
 }
 
-bool kernel_is_block_mutated(kernel_Block* block_, bool check_witness_root)
+btck_Coin* btck_coin_copy(const btck_Coin* coin)
 {
-    auto block{cast_cblocksharedpointer(block_)};
-    return IsBlockMutated(**block, check_witness_root);
+    return new btck_Coin{new Coin{*coin->m_coin}, true};
 }
 
-size_t kernel_number_of_transactions_in_block(kernel_Block* block_)
+uint32_t btck_coin_confirmation_height(const btck_Coin* coin)
 {
-    auto block{cast_cblocksharedpointer(block_)};
-    return (**block).vtx.size();
+    return coin->m_coin->nHeight;
 }
 
-kernel_Transaction* kernel_get_transaction_by_index(kernel_Block* block_, uint64_t index)
+int btck_coin_is_coinbase(const btck_Coin* coin)
 {
-    auto block{cast_cblocksharedpointer(block_)};
-    if (index >= (**block).vtx.size()) {
-        LogDebug(BCLog::KERNEL, "Index is not in range of available transactions in this block.\n");
-        return nullptr;
+    return coin->m_coin->IsCoinBase() ? 1 : 0;
+}
+
+btck_TransactionOutput* btck_coin_get_output(const btck_Coin* coin)
+{
+    const CTxOut* output{&coin->m_coin->out};
+    return new btck_TransactionOutput{output, false};
+}
+
+void btck_coin_destroy(btck_Coin* coin)
+{
+    if (!coin) return;
+    if (coin->m_owned) {
+        delete coin->m_coin;
     }
-    return reinterpret_cast<kernel_Transaction*>(new CTransaction{*(**block).vtx[index]});
+    delete coin;
+    coin = nullptr;
 }
 
-bool kernel_loading_blocks(kernel_ChainstateManager* chainman)
+int btck_chainstate_manager_process_block(
+    btck_ChainstateManager* chainman,
+    const btck_Block* block,
+    int* _new_block)
 {
-    return cast_chainstate_manager(chainman)->m_blockman.LoadingBlocks();
+    bool new_block;
+    auto result = chainman->m_chainman->ProcessNewBlock(block->m_block, /*force_processing=*/true, /*min_pow_checked=*/true, /*new_block=*/&new_block);
+    if (_new_block) {
+        *_new_block = new_block ? 1 : 0;
+    }
+    return result ? 0 : -1;
 }
 
+btck_Chain* btck_chainstate_manager_get_active_chain(const btck_ChainstateManager* chainman)
+{
+    return new btck_Chain{&WITH_LOCK(chainman->m_chainman->GetMutex(), return chainman->m_chainman->ActiveChain())};
+}
+
+btck_BlockTreeEntry* btck_chain_get_tip(const btck_Chain* chain)
+{
+    return new btck_BlockTreeEntry{chain->m_chain->Tip()};
+}
+
+btck_BlockTreeEntry* btck_chain_get_genesis(const btck_Chain* chain)
+{
+    return new btck_BlockTreeEntry{chain->m_chain->Genesis()};
+}
+
+btck_BlockTreeEntry* btck_chain_get_by_height(const btck_Chain* chain, int height)
+{
+    LOCK(::cs_main);
+    assert(height >= 0 && height <= chain->m_chain->Height());
+    return new btck_BlockTreeEntry{(*chain->m_chain)[height]};
+}
+
+int btck_chain_contains(const btck_Chain* chain, const btck_BlockTreeEntry* entry)
+{
+    LOCK(::cs_main);
+    return chain->m_chain->Contains(entry->m_block_index) ? 1 : 0;
+}
+
+void btck_chain_destroy(btck_Chain* chain)
+{
+    // The chain is always unowned, so only delete the wrapper struct, not the data it is pointing to.
+    delete chain;
+}

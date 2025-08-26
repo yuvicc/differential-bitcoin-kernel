@@ -2,33 +2,10 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
-include(GenerateHeaders)
-generate_header_from_json(data/base58_encode_decode.json)
-generate_header_from_json(data/bip341_wallet_vectors.json)
-generate_header_from_json(data/blockfilters.json)
-generate_header_from_json(data/key_io_invalid.json)
-generate_header_from_json(data/key_io_valid.json)
-generate_header_from_json(data/script_tests.json)
-generate_header_from_json(data/sighash.json)
-generate_header_from_json(data/tx_invalid.json)
-generate_header_from_json(data/tx_valid.json)
-generate_header_from_raw(data/asmap.raw test::data)
-
 # Do not use generator expressions in test sources because the
 # SOURCES property is processed to gather test suite macros.
 add_executable(test_bitcoin
   main.cpp
-  $<TARGET_OBJECTS:bitcoin_consensus>
-  ${CMAKE_CURRENT_BINARY_DIR}/data/asmap.raw.h
-  ${CMAKE_CURRENT_BINARY_DIR}/data/base58_encode_decode.json.h
-  ${CMAKE_CURRENT_BINARY_DIR}/data/bip341_wallet_vectors.json.h
-  ${CMAKE_CURRENT_BINARY_DIR}/data/blockfilters.json.h
-  ${CMAKE_CURRENT_BINARY_DIR}/data/key_io_invalid.json.h
-  ${CMAKE_CURRENT_BINARY_DIR}/data/key_io_valid.json.h
-  ${CMAKE_CURRENT_BINARY_DIR}/data/script_tests.json.h
-  ${CMAKE_CURRENT_BINARY_DIR}/data/sighash.json.h
-  ${CMAKE_CURRENT_BINARY_DIR}/data/tx_invalid.json.h
-  ${CMAKE_CURRENT_BINARY_DIR}/data/tx_valid.json.h
   addrman_tests.cpp
   allocator_tests.cpp
   amount_tests.cpp
@@ -48,6 +25,7 @@ add_executable(test_bitcoin
   blockmanager_tests.cpp
   bloom_tests.cpp
   bswap_tests.cpp
+  chainstate_write_tests.cpp
   checkqueue_tests.cpp
   cluster_linearize_tests.cpp
   coins_tests.cpp
@@ -86,8 +64,10 @@ add_executable(test_bitcoin
   net_peer_eviction_tests.cpp
   net_tests.cpp
   netbase_tests.cpp
+  node_init_tests.cpp
   node_warnings_tests.cpp
   orphanage_tests.cpp
+  pcp_tests.cpp
   peerman_tests.cpp
   pmt_tests.cpp
   policy_fee_tests.cpp
@@ -104,6 +84,7 @@ add_executable(test_bitcoin
   rpc_tests.cpp
   sanity_tests.cpp
   scheduler_tests.cpp
+  script_assets_tests.cpp
   script_p2sh_tests.cpp
   script_parse_tests.cpp
   script_segwit_tests.cpp
@@ -121,11 +102,13 @@ add_executable(test_bitcoin
   streams_tests.cpp
   sync_tests.cpp
   system_tests.cpp
+  testnet4_miner_tests.cpp
   timeoffsets_tests.cpp
   torcontrol_tests.cpp
   transaction_tests.cpp
   translation_tests.cpp
   txdownload_tests.cpp
+  txgraph_tests.cpp
   txindex_tests.cpp
   txpackage_tests.cpp
   txreconciliation_tests.cpp
@@ -146,11 +129,30 @@ add_executable(test_bitcoin
   versionbits_tests.cpp
 )
 
+include(TargetDataSources)
+target_json_data_sources(test_bitcoin
+  data/base58_encode_decode.json
+  data/bip341_wallet_vectors.json
+  data/blockfilters.json
+  data/key_io_invalid.json
+  data/key_io_valid.json
+  data/script_tests.json
+  data/sighash.json
+  data/tx_invalid.json
+  data/tx_valid.json
+)
+target_raw_data_sources(test_bitcoin NAMESPACE test::data
+  data/asmap.raw
+)
+
+add_windows_application_manifest(test_bitcoin)
+
 target_link_libraries(test_bitcoin
   core_interface
   test_util
   bitcoin_cli
   bitcoin_node
+  bitcoin_consensus
   minisketch
   secp256k1
   Boost::headers
@@ -161,11 +163,12 @@ if(ENABLE_WALLET)
   add_subdirectory(${PROJECT_SOURCE_DIR}/src/wallet/test wallet)
 endif()
 
-if(WITH_MULTIPROCESS)
+if(ENABLE_IPC)
   target_link_libraries(bitcoin_ipc_test
     PRIVATE
       core_interface
       univalue
+      Boost::headers
   )
 
   target_sources(test_bitcoin
@@ -182,21 +185,20 @@ function(add_boost_test source_file)
 
   file(READ "${source_file}" source_file_content)
   string(REGEX
-    MATCH "(BOOST_FIXTURE_TEST_SUITE|BOOST_AUTO_TEST_SUITE)\\(([A-Za-z0-9_]+)"
+    MATCHALL "(BOOST_FIXTURE_TEST_SUITE|BOOST_AUTO_TEST_SUITE)\\(([A-Za-z0-9_]+)"
     test_suite_macro "${source_file_content}"
   )
-  string(REGEX
+  list(TRANSFORM test_suite_macro
     REPLACE "(BOOST_FIXTURE_TEST_SUITE|BOOST_AUTO_TEST_SUITE)\\(" ""
-    test_suite_name "${test_suite_macro}"
   )
-  if(test_suite_name)
+  foreach(test_suite_name IN LISTS test_suite_macro)
     add_test(NAME ${test_suite_name}
       COMMAND test_bitcoin --run_test=${test_suite_name} --catch_system_error=no --log_level=test_suite -- DEBUG_LOG_OUT
     )
     set_property(TEST ${test_suite_name} PROPERTY
-      SKIP_REGULAR_EXPRESSION "no test cases matching filter"
+      SKIP_REGULAR_EXPRESSION "no test cases matching filter" "skipping script_assets_test"
     )
-  endif()
+  endforeach()
 endfunction()
 
 function(add_all_test_targets)
@@ -213,6 +215,4 @@ endfunction()
 
 add_all_test_targets()
 
-install(TARGETS test_bitcoin
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+install_binary_component(test_bitcoin INTERNAL)

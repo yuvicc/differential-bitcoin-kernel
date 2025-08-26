@@ -1,4 +1,4 @@
-// Copyright (c) 2024
+// Copyright (c) 2024-present The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #ifndef BITCOIN_NODE_TXDOWNLOADMAN_IMPL_H
@@ -10,9 +10,9 @@
 #include <consensus/validation.h>
 #include <kernel/chain.h>
 #include <net.h>
+#include <node/txorphanage.h>
 #include <primitives/transaction.h>
 #include <policy/packages.h>
-#include <txorphanage.h>
 #include <txrequest.h>
 
 class CTxMemPool;
@@ -22,7 +22,7 @@ public:
     TxDownloadOptions m_opts;
 
     /** Manages unvalidated tx data (orphan transactions for which we are downloading ancestors). */
-    TxOrphanage m_orphanage;
+    std::unique_ptr<TxOrphanage> m_orphanage;
     /** Tracks candidates for requesting and downloading transaction data. */
     TxRequestTracker m_txrequest;
 
@@ -128,7 +128,7 @@ public:
         return *m_lazy_recent_confirmed_transactions;
     }
 
-    TxDownloadManagerImpl(const TxDownloadOptions& options) : m_opts{options}, m_txrequest{options.m_deterministic_txrequest} {}
+    TxDownloadManagerImpl(const TxDownloadOptions& options) : m_opts{options}, m_orphanage{MakeTxOrphanage()}, m_txrequest{options.m_deterministic_txrequest} {}
 
     struct PeerInfo {
         /** Information relevant to scheduling tx requests. */
@@ -163,13 +163,13 @@ public:
     /** Consider adding this tx hash to txrequest. Should be called whenever a new inv has been received.
      * Also called internally when a transaction is missing parents so that we can request them.
      */
-    bool AddTxAnnouncement(NodeId peer, const GenTxid& gtxid, std::chrono::microseconds now, bool p2p_inv);
+    bool AddTxAnnouncement(NodeId peer, const GenTxid& gtxid, std::chrono::microseconds now);
 
     /** Get getdata requests to send. */
     std::vector<GenTxid> GetRequestsToSend(NodeId nodeid, std::chrono::microseconds current_time);
 
     /** Marks a tx as ReceivedResponse in txrequest. */
-    void ReceivedNotFound(NodeId nodeid, const std::vector<uint256>& txhashes);
+    void ReceivedNotFound(NodeId nodeid, const std::vector<GenTxid>& gtxids);
 
     /** Look for a child of this transaction in the orphanage to form a 1-parent-1-child package,
      * skipping any combinations that have already been tried. Return the resulting package along with
@@ -188,7 +188,17 @@ public:
     void CheckIsEmpty();
     void CheckIsEmpty(NodeId nodeid);
 
-    std::vector<TxOrphanage::OrphanTxBase> GetOrphanTransactions() const;
+    std::vector<TxOrphanage::OrphanInfo> GetOrphanTransactions() const;
+
+protected:
+    /** Helper for getting deduplicated vector of Txids in vin. */
+    std::vector<Txid> GetUniqueParents(const CTransaction& tx);
+
+    /** If this peer is an orphan resolution candidate for this transaction, treat the unique_parents as announced by
+     * this peer; add them as new invs to m_txrequest.
+     * @returns whether this transaction was a valid orphan resolution candidate.
+     * */
+    bool MaybeAddOrphanResolutionCandidate(const std::vector<Txid>& unique_parents, const Wtxid& wtxid, NodeId nodeid, std::chrono::microseconds now);
 };
 } // namespace node
 #endif // BITCOIN_NODE_TXDOWNLOADMAN_IMPL_H

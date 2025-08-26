@@ -36,6 +36,7 @@ void initialize_connman()
 
 FUZZ_TARGET(connman, .init = initialize_connman)
 {
+    SeedRandomStateForTest(SeedRand::ZEROS);
     FuzzedDataProvider fuzzed_data_provider{buffer.data(), buffer.size()};
     SetMockTime(ConsumeTime(fuzzed_data_provider));
     auto netgroupman{ConsumeNetGroupManager(fuzzed_data_provider)};
@@ -112,7 +113,7 @@ FUZZ_TARGET(connman, .init = initialize_connman)
                 auto max_addresses = fuzzed_data_provider.ConsumeIntegral<size_t>();
                 auto max_pct = fuzzed_data_provider.ConsumeIntegralInRange<size_t>(0, 100);
                 auto filtered = fuzzed_data_provider.ConsumeBool();
-                (void)connman.GetAddresses(max_addresses, max_pct, /*network=*/std::nullopt, filtered);
+                (void)connman.GetAddressesUnsafe(max_addresses, max_pct, /*network=*/std::nullopt, filtered);
             },
             [&] {
                 auto max_addresses = fuzzed_data_provider.ConsumeIntegral<size_t>();

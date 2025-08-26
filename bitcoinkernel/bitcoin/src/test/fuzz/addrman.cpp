@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022 The Bitcoin Core developers
+// Copyright (c) 2020-present The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,12 +14,12 @@
 #include <test/fuzz/util.h>
 #include <test/fuzz/util/net.h>
 #include <test/util/setup_common.h>
-#include <time.h>
 #include <util/asmap.h>
 #include <util/chaintype.h>
 
 #include <cassert>
 #include <cstdint>
+#include <ctime>
 #include <optional>
 #include <string>
 #include <vector>
@@ -41,6 +41,7 @@ void initialize_addrman()
 
 FUZZ_TARGET(data_stream_addr_man, .init = initialize_addrman)
 {
+    SeedRandomStateForTest(SeedRand::ZEROS);
     FuzzedDataProvider fuzzed_data_provider{buffer.data(), buffer.size()};
     DataStream data_stream = ConsumeDataStream(fuzzed_data_provider);
     NetGroupManager netgroupman{ConsumeNetGroupManager(fuzzed_data_provider)};
@@ -113,6 +114,7 @@ void FillAddrman(AddrMan& addrman, FuzzedDataProvider& fuzzed_data_provider)
 
 FUZZ_TARGET(addrman, .init = initialize_addrman)
 {
+    SeedRandomStateForTest(SeedRand::ZEROS);
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
     SetMockTime(ConsumeTime(fuzzed_data_provider));
     NetGroupManager netgroupman{ConsumeNetGroupManager(fuzzed_data_provider)};
@@ -197,6 +199,7 @@ FUZZ_TARGET(addrman, .init = initialize_addrman)
 // Check that serialize followed by unserialize produces the same addrman.
 FUZZ_TARGET(addrman_serdeser, .init = initialize_addrman)
 {
+    SeedRandomStateForTest(SeedRand::ZEROS);
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
     SetMockTime(ConsumeTime(fuzzed_data_provider));
 
