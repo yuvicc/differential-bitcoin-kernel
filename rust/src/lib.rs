@@ -1,6 +1,7 @@
 use std::{ffi::{CString, NulError}, ptr::NonNull, sync::Arc};
 
 use bitcoinkernel_sys::*;
+
 pub mod enums;
 pub mod error;
 pub mod block;
@@ -9,23 +10,23 @@ pub mod chain;
 
 /// Struct for transaction operations
 pub struct Transaction {
-    inner: NonNull<kernel_Transaction>,
+    inner: NonNull<btck_Transaction>,
 }
 
 impl Drop for Transaction {
     fn drop(&mut self) {
-        unsafe { kernel_transaction_destroy(self.inner.as_ptr()); }
+        unsafe { btck_transaction_destroy(self.inner.as_ptr()); }
     }
 }
 
 /// Struct for scriptpubkey operations
 pub struct ScriptPubkey {
-    inner: NonNull<kernel_ScriptPubkey>,
+    inner: NonNull<btck_ScriptPubkey>,
 }
 
 impl Drop for ScriptPubkey {
     fn drop(&mut self) {
-        unsafe { kernel_script_pubkey_destroy(self.inner.as_ptr()); }
+        unsafe { btck_script_pubkey_destroy(self.inner.as_ptr()); }
     }
 }
 
@@ -43,30 +44,40 @@ pub fn verify_script(
 
 /// Struct for Transaction Output operations
 pub struct TransactionOutput {
-    inner: NonNull<kernel_TransactionOutput>,
+    inner: NonNull<btck_TransactionOutput>,
 }
 
 impl Drop for TransactionOutput {
     fn drop(&mut self) {
-        unsafe { kernel_transaction_output_destroy(self.inner.as_ptr()); }
+        unsafe { btck_transaction_output_destroy(self.inner.as_ptr()); }
+    }
+}
+
+pub struct TransactionSpentOutputs {
+    inner: NonNull<btck_BlockSpentOutputs>,
+}
+
+impl Drop for TransactionSpentOutputs {
+    fn drop(&mut self) {
+        unsafe { btck_block_spent_outputs_destroy(self.inner.as_ptr()); }
     }
 }
 
 /// Struct for logger operations
 pub struct Logger<T> {
     log: T,
-    inner: NonNull<kernel_LoggingConnection>
+    inner: NonNull<btck_LoggingConnection>
 }
 
 impl<T> Drop for Logger<T> {
     fn drop(&mut self) {
-      unsafe { kernel_logging_connection_destroy(self.inner.as_ptr()); }  
+      unsafe { btck_logging_connection_destroy(self.inner.as_ptr()); }  
     }
 }
 
 pub fn disable_logging() {
     unsafe {
-        kernel_disable_logging();
+        btck_logging_disable();
     }
 }
 
@@ -75,156 +86,82 @@ pub struct KernelNotifications {
     
 }
 
-/// Struct for unowned block
-pub struct UnownedBlock {
-    inner: NonNull<kernel_BlockPointer>,
-}
-
-impl UnownedBlock {
-    fn new(block: NonNull<kernel_BlockPointer>) -> UnownedBlock{
-        UnownedBlock { inner: block }
-    }
-    
-    pub fn get_hash() {
-        
-    }
-}
-
-/// Struct for Block validation state
-pub struct BlockValidationState {
-    
-}
-
-/// Struct for validation interface
-pub struct ValidationInterface {
-    
-}
-
 /// Struct for ChainParams
 pub struct ChainParams {
-    inner: NonNull<kernel_ChainParameters>,
+    inner: NonNull<btck_ChainParameters>,
 }
 
 impl Drop for ChainParams {
     fn drop(&mut self) {
-        unsafe { kernel_chain_parameters_destroy(self.inner.as_ptr()); }
+        unsafe { btck_chain_parameters_destroy(self.inner.as_ptr()); }
     }
 }
 
 /// Struct for ContextOptions
 pub struct ContextOptions {
-    inner: NonNull<kernel_ContextOptions>,
+    inner: NonNull<btck_ContextOptions>,
 }
 
 impl Drop for ContextOptions {
     fn drop(&mut self) {
-        unsafe { kernel_context_options_destroy(self.inner.as_ptr()); }
+        unsafe { btck_context_options_destroy(self.inner.as_ptr()); }
     }
 }
 
 /// Struct for Context
 pub struct Context {
-    inner: NonNull<kernel_Context>,
+    inner: NonNull<btck_Context>,
 }
 
 impl Drop for Context {
     fn drop(&mut self) {
-        unsafe { kernel_context_destroy(self.inner.as_ptr()); }
+        unsafe { btck_context_destroy(self.inner.as_ptr()); }
     }
 }
 
 /// Struct for Chainstate Manager Options
 pub struct ChainstateManagerOptions {
-    inner: NonNull<kernel_ChainstateManagerOptions>,
+    inner: NonNull<btck_ChainstateManagerOptions>,
 }
 
 impl Drop for ChainstateManagerOptions {
     fn drop(&mut self) {
-        unsafe { kernel_chainstate_manager_options_destroy(self.inner.as_ptr()); }
+        unsafe { btck_chainstate_manager_options_destroy(self.inner.as_ptr()); }
     }
 }
 
 /// Struct for Block Operations
 pub struct Block {
-    inner: NonNull<kernel_Block>,
+    inner: NonNull<btck_Block>,
 }
 
 impl Drop for Block {
     fn drop(&mut self) {
-        unsafe { kernel_block_destroy(self.inner.as_ptr()); }
-    }
-}
-
-/// Struct for Block Undo
-pub struct BlockUndo {
-    inner: NonNull<kernel_BlockUndo>,
-}
-
-impl Drop for BlockUndo {
-    fn drop(&mut self) {
-        unsafe { kernel_block_undo_destroy(self.inner.as_ptr()); }
-    }
-}
-
-/// Struct for BlockIndex
-pub struct BlockIndex {
-    inner: NonNull<kernel_BlockIndex>,
-}
-
-impl Drop for BlockIndex {
-    fn drop(&mut self) {
-        unsafe { kernel_block_index_destroy(self.inner.as_ptr()); }
+        unsafe { btck_block_destroy(self.inner.as_ptr()); }
     }
 }
 
 /// Struct for Chain Man
-pub struct ChainMan {
-    inner: NonNull<kernel_ChainstateManager>,
+pub struct ChainstateManager {
+    inner: NonNull<btck_ChainstateManager>,
     context: Arc<Context>,
 }
 
-impl Drop for ChainMan {
+impl Drop for ChainstateManager {
     fn drop(&mut self) {
-        unsafe { kernel_chainstate_manager_destroy(self.inner.as_ptr(), self.context.inner.as_ptr()); }
+        unsafe { btck_chainstate_manager_destroy(self.inner.as_ptr()); }
     }
 }
 
-/// A collection of errors emitted by this library
-#[derive(Debug)]
-pub enum KernelError {
-    Internal(String),
-    CStringCreationFailed(String),
-    InvalidOptions(String),
-    OutOfBounds,
-    Scriptverify(ScriptVerifyError),
+pub struct Coin {
+    inner: NonNull<btck_Coin>,
 }
 
-/// A collection of errors that may occur during scriptverification
-pub enum ScriptVerificationFlags {
-    NONE,
-    P2SH,
-    DERSIG,
-    NULLDUMMY,
-    CHECKLOCKTIMEVERIFY,
-    CHECKSEQUENCEVERIFY,
-    WITNESS,
-    TAPROOT,
-    ALL,
+impl Drop for Coin {
+    fn drop(&mut self) {
+        unsafe { btck_coin_destroy(self.inner.as_ptr()); }
+    }
 }
-
-pub enum ScriptVerifyStatus {
-    OK,
-    ERROR_INVALID_FLAGS_COMBINATION,
-    ERROR_SPENT_OUTPUTS_REQUIRED,
-}
-
-
-
-
-
-
-
-
 
 
 
