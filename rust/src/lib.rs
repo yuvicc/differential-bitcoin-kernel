@@ -7,6 +7,7 @@ pub mod error;
 pub mod block;
 pub mod transaction;
 pub mod chain;
+pub mod constants;
 
 /// Struct for transaction operations
 pub struct Transaction {
