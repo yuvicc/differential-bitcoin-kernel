@@ -1,6 +1,7 @@
 use crate::{
      btck_LogCategory, btck_SynchronizationState, btck_Warning,
-     btck_ValidationMode, btck_BlockValidationResult, btck_ScriptVerificationFlags, btck_ScriptVerifyStatus, btck_ChainType
+     btck_ValidationMode, btck_BlockValidationResult, btck_ScriptVerificationFlags, btck_ScriptVerifyStatus, btck_ChainType,
+     btck_LogLevel
 };
 
 // Logging Categories from C headers - mapped with kernel code
@@ -15,6 +16,11 @@ pub const BTCK_LOGCATEGORY_RAND: btck_LogCategory = 7;
 pub const BTCK_LOGCATEGORY_REINDEX: btck_LogCategory = 8;
 pub const BTCK_LOGCATEGORY_VALIDATION: btck_LogCategory = 9;
 pub const BTCK_LOGCATEGORY_KERNEL: btck_LogCategory = 10;
+
+// Log level from C header
+pub const BTCK_LOG_LEVEL_TRACE_LEVEL: btck_LogLevel = 0;
+pub const BTCK_LOG_LEVEL_DEBUG_LEVEL: btck_LogLevel = 1;
+pub const BTCK_LOG_LEVEL_INFO_LEVEL: btck_LogLevel = 2;
 
 // Synchronization state from C header - mapped with kernel code
 pub const BTCK_SYNCHRONIZATIONSTATE_INIT_REINDEX: btck_SynchronizationState = 0;
@@ -43,18 +49,18 @@ pub const BTCK_BLOCK_VALIDATION_RESULT_HEADER_LOW_WORK: btck_BlockValidationResu
 
 // Script Verify Status 
 pub const BTCK_SCRIPT_VERIFY_STATUS_OK: btck_ScriptVerifyStatus = 0;
-pub const BTCK_SCRIPT_VERIFY_STATUS_ERROR_INVALID_FLAGS_COMBINATION: btck_ScriptVerifyStatus = 1;
-pub const BTCK_SCRIPT_VERIFY_STATUS_ERROR_SPENT_OUTPUTS_REQUIRED: btck_ScriptVerifyStatus = 2;
+pub const BTCK_SCRIPT_VERIFY_STATUS_INVALID_FLAGS_COMBINATION: btck_ScriptVerifyStatus = 1;
+pub const BTCK_SCRIPT_VERIFY_STATUS_SPENT_OUTPUTS_REQUIRED: btck_ScriptVerifyStatus = 2;
 
 // Script Verification Flags
 pub const BTCK_SCRIPT_VERIFICATION_FLAGS_NONE: btck_ScriptVerificationFlags = 0;
 pub const BTCK_SCRIPT_VERIFICATION_FLAGS_P2SH: btck_ScriptVerificationFlags = 1 << 0;
 pub const BTCK_SCRIPT_VERIFICATION_FLAGS_DERSIG: btck_ScriptVerificationFlags = 1 << 2;
 pub const BTCK_SCRIPT_VERIFICATION_FLAGS_NULLDUMMY: btck_ScriptVerificationFlags = 1 << 3;
-pub const BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKLOCKTIMEVERIFY: btck_ScriptVerificationFlags = 4;
-pub const BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKSEQUENCEVERIFY: btck_ScriptVerificationFlags = 5;
-pub const BTCK_SCRIPT_VERIFICATION_FLAGS_WITNESS: btck_ScriptVerificationFlags = 6;
-pub const BTCK_SCRIPT_VERIFICATION_FLAGS_TAPROOT: btck_ScriptVerificationFlags = 7;
+pub const BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKLOCKTIMEVERIFY: btck_ScriptVerificationFlags = 1 << 4;
+pub const BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKSEQUENCEVERIFY: btck_ScriptVerificationFlags = 1 << 5;
+pub const BTCK_SCRIPT_VERIFICATION_FLAGS_WITNESS: btck_ScriptVerificationFlags = 1 << 6;
+pub const BTCK_SCRIPT_VERIFICATION_FLAGS_TAPROOT: btck_ScriptVerificationFlags = 1 << 7;
 pub const BTCK_SCRIPT_VERIFICATION_FLAGS_ALL: btck_ScriptVerificationFlags = 
      BTCK_SCRIPT_VERIFICATION_FLAGS_P2SH
      | BTCK_SCRIPT_VERIFICATION_FLAGS_DERSIG

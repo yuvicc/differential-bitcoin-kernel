@@ -1,105 +1,140 @@
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
-
-use crate::{
-    btck_
-}
-
-use std::borrow::Borrow;
-use std::ffi::{c_char, c_void, CString, NulError};
-use std::marker::PhantomData;
-use std::{fmt, panic};
-
 use bitcoinkernel_sys::*;
 
-// #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-// pub enum LogCategory {
-//     ALL,
-//     BENCH,
-//     BLOCKSTORAGE,
-//     COINDB,
-//     LEVELDB,
-//     MEMPOOL,
-//     PRUNE,
-//     RAND,
-//     REINDEX,
-//     VALIDATION,
-//     KERNEL,
-// }
+use crate::constants::{BTCK_BLOCK_VALIDATION_RESULT_CACHED_INVALID, BTCK_BLOCK_VALIDATION_RESULT_CONSENSUS, BTCK_BLOCK_VALIDATION_RESULT_HEADER_LOW_WORK, BTCK_BLOCK_VALIDATION_RESULT_INVALID_HEADER, BTCK_BLOCK_VALIDATION_RESULT_INVALID_PREV, BTCK_BLOCK_VALIDATION_RESULT_MISSING_PREV, BTCK_BLOCK_VALIDATION_RESULT_MUTATED, BTCK_BLOCK_VALIDATION_RESULT_TIME_FUTURE, BTCK_BLOCK_VALIDATION_RESULT_UNSET, BTCK_CHAIN_TYPE_MAINNET, BTCK_CHAIN_TYPE_REGTEST, BTCK_CHAIN_TYPE_SIGNET, BTCK_CHAIN_TYPE_TESTNET, BTCK_CHAIN_TYPE_TESTNET4, BTCK_LOGCATEGORY_ALL, BTCK_LOGCATEGORY_BENCH, BTCK_LOGCATEGORY_BLOCKSTORAGE, BTCK_LOGCATEGORY_COINDB, BTCK_LOGCATEGORY_KERNEL, BTCK_LOGCATEGORY_LEVELDB, BTCK_LOGCATEGORY_MEMPOOL, BTCK_LOGCATEGORY_PRUNE, BTCK_LOGCATEGORY_RAND, BTCK_LOGCATEGORY_REINDEX, BTCK_LOGCATEGORY_VALIDATION, BTCK_LOG_LEVEL_DEBUG_LEVEL, BTCK_LOG_LEVEL_INFO_LEVEL, BTCK_LOG_LEVEL_TRACE_LEVEL, BTCK_SCRIPT_VERIFICATION_FLAGS_ALL, BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKLOCKTIMEVERIFY, BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKSEQUENCEVERIFY, BTCK_SCRIPT_VERIFICATION_FLAGS_DERSIG, BTCK_SCRIPT_VERIFICATION_FLAGS_NONE, BTCK_SCRIPT_VERIFICATION_FLAGS_NULLDUMMY, BTCK_SCRIPT_VERIFICATION_FLAGS_P2SH, BTCK_SCRIPT_VERIFICATION_FLAGS_TAPROOT, BTCK_SCRIPT_VERIFICATION_FLAGS_WITNESS, BTCK_SCRIPT_VERIFY_STATUS_INVALID_FLAGS_COMBINATION, BTCK_SCRIPT_VERIFY_STATUS_OK, BTCK_SCRIPT_VERIFY_STATUS_SPENT_OUTPUTS_REQUIRED, BTCK_SYNCHRONIZATIONSTATE_INIT_DOWNLOAD, BTCK_SYNCHRONIZATIONSTATE_INIT_REINDEX, BTCK_SYNCHRONIZATIONSTATE_POST_INIT, BTCK_VALIDATION_MODE_INTERNAL_ERROR, BTCK_VALIDATION_MODE_INVALID, BTCK_VALIDATION_MODE_VALID, BTCK_WARNING_LARGE_WORK_INVALID_CHAIN, BTCK_WARNING_UNKNOWN_NEW_RULES_ACTIVATED};
 
-// impl From<LogCategory> for btck_LogCategory {
-//     fn from(category: LogCategory) -> Self {
-//         match category  {
-//             LogCategory::ALL => btck_Log,
-//             LogCategory::BENCH => btck_LogCategory_BENCH,
-//             LogCategory::BLOCKSTORAGE => btck_Logcategory_BLOCKSTORAGE,
-//             LogCategory::COINDB => btck_LogCategory_COINDB,
-//             LogCategory::LEVELDB => btck_LogCategory_LEVELDB,
-//             LogCategory::MEMPOOL => btck_LogCategory_MEMPOOL,
-//             LogCategory::PRUNE => btck_LogCategory_RAND,
-//             LogCategory::RAND => btck_LogCategory_RAND,
-//             LogCategory::REINDEX => btck_LogCategory_REINDEX,
-//             LogCategory::VALIDATION => btck_LogCategory_VALIDATION,
-//             LogCategory::KERNEL => btck_LogCategory_KERNEL,
-//         }
-//     }
-// }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum LogCategory {
+    ALL = BTCK_LOGCATEGORY_ALL,
+    BENCH = BTCK_LOGCATEGORY_BENCH,
+    BLOCKSTORAGE = BTCK_LOGCATEGORY_BLOCKSTORAGE,
+    COINDB = BTCK_LOGCATEGORY_COINDB,
+    LEVELDB = BTCK_LOGCATEGORY_LEVELDB,
+    MEMPOOL = BTCK_LOGCATEGORY_MEMPOOL,
+    PRUNE = BTCK_LOGCATEGORY_PRUNE,
+    RAND = BTCK_LOGCATEGORY_RAND,
+    REINDEX = BTCK_LOGCATEGORY_REINDEX,
+    VALIDATION = BTCK_LOGCATEGORY_VALIDATION,
+    KERNEL = BTCK_LOGCATEGORY_KERNEL,
+}
+
+impl From<LogCategory> for btck_LogCategory {
+    fn from(category: LogCategory) -> Self {
+        category as btck_LogCategory
+    }
+}
+
+#[repr(u8)]
 pub enum ChainType {
-    MAINNET,
-    TESTNET,
-    TESTNET4,
-    SIGNET,
-    REGTEST,
+    MAINNET = BTCK_CHAIN_TYPE_MAINNET,
+    TESTNET = BTCK_CHAIN_TYPE_TESTNET,
+    TESTNET4 = BTCK_CHAIN_TYPE_TESTNET4,
+    SIGNET = BTCK_CHAIN_TYPE_SIGNET,
+    REGTEST = BTCK_CHAIN_TYPE_REGTEST,
 }
 
 impl From<ChainType> for btck_ChainType {
     
     fn from(chain: ChainType) -> btck_ChainType {
-        match chain {
-            ChainType::MAINNET => btck_ChainType_btc,
-            ChainType::TESTNET => btck_ChainType_btck_CHAIN_TYPE_TESTNET,
-            ChainType::TESTNET4 => btck_ChainType_btck_CHAIN_TYPE_TESTNET4,
-            ChainType::SIGNET => btck_ChainType_btck_CHAIN_TYPE_SIGNET,
-            ChainType::REGTEST => btck_ChainType_btck_CHAIN_TYPE_REGTEST,
-        }
+        chain as btck_ChainType
     }
     
 }
 
 
+#[repr(u8)]
 pub enum ValidationMode {
-    VALIDATION_STATE_VALID,
-    VALIDATION_STATE_INVALID,
-    VALIDATION_STATE_ERROR,
+    VALIDATION_MODE_VALID = BTCK_VALIDATION_MODE_VALID,
+    VALIDATION_MODE_INVALID = BTCK_VALIDATION_MODE_INVALID,
+    VALIDATION_MODE_INTERNAL_ERROR = BTCK_VALIDATION_MODE_INTERNAL_ERROR,
 }
 
+impl From<ValidationMode> for btck_ValidationMode {
+    fn from(mode: ValidationMode) -> btck_ValidationMode {
+        mode as btck_ValidationMode
+    }
+}
+
+#[repr(u32)]
 pub enum BlockValidationResult {
-    BLOCK_RESULT_UNSET,
-    BLOCK_CONSENSUS,
-    BLOCK_CACHED_INVALID,
-    BLOCK_INVALID_HEADER,
-    BLOCK_MUTATED,
-    BLOCK_MISSING_PREV,
-    BLOCK_INVALID_PREV,
-    BLOCK_TIME_FUTURE,
-    BLOCK_HEADER_LOW_WORK,
+    BLOCK_RESULT_UNSET = BTCK_BLOCK_VALIDATION_RESULT_UNSET,
+    BLOCK_CONSENSUS = BTCK_BLOCK_VALIDATION_RESULT_CONSENSUS,
+    BLOCK_CACHED_INVALID = BTCK_BLOCK_VALIDATION_RESULT_CACHED_INVALID,
+    BLOCK_INVALID_HEADER = BTCK_BLOCK_VALIDATION_RESULT_INVALID_HEADER,
+    BLOCK_MUTATED = BTCK_BLOCK_VALIDATION_RESULT_MUTATED,
+    BLOCK_MISSING_PREV = BTCK_BLOCK_VALIDATION_RESULT_MISSING_PREV,
+    BLOCK_INVALID_PREV = BTCK_BLOCK_VALIDATION_RESULT_INVALID_PREV,
+    BLOCK_TIME_FUTURE = BTCK_BLOCK_VALIDATION_RESULT_TIME_FUTURE,
+    BLOCK_HEADER_LOW_WORK = BTCK_BLOCK_VALIDATION_RESULT_HEADER_LOW_WORK,
 }
 
+impl From<BlockValidationResult> for btck_BlockValidationResult {
+    fn from(result: BlockValidationResult) -> btck_BlockValidationResult {
+        result as btck_BlockValidationResult
+    }
+}
+
+#[repr(u8)]
 pub enum LogLevel {
-    TRACE_LEVEL,
-    DEBUG_LEVEL,
-    INFO_LEVEL,
+    TRACE_LEVEL = BTCK_LOG_LEVEL_TRACE_LEVEL,
+    DEBUG_LEVEL = BTCK_LOG_LEVEL_DEBUG_LEVEL,
+    INFO_LEVEL = BTCK_LOG_LEVEL_INFO_LEVEL,
 }
 
+impl From<LogLevel> for btck_LogLevel {
+    fn from(level: LogLevel) -> btck_LogLevel {
+        level as btck_LogLevel
+    }
+}
+
+#[repr(u8)]
 pub enum SynchronizationState {
-    INIT_REINDEX,
-    INIT_DOWNLOAD,
-    POST_INIT,
+    INIT_REINDEX = BTCK_SYNCHRONIZATIONSTATE_INIT_REINDEX,
+    INIT_DOWNLOAD = BTCK_SYNCHRONIZATIONSTATE_INIT_DOWNLOAD,
+    POST_INIT = BTCK_SYNCHRONIZATIONSTATE_POST_INIT,
 }
 
+impl From<SynchronizationState> for btck_SynchronizationState {
+    fn from(state: SynchronizationState) -> btck_SynchronizationState {
+        state as btck_SynchronizationState
+    }
+}
+
+#[repr(u8)]
 pub enum Warning {
-    UNKNOWN_NEW_RULES_ACTIVATED,
-    LARGE_WORK_INVALID_CHAIN,
+    UNKNOWN_NEW_RULES_ACTIVATED = BTCK_WARNING_UNKNOWN_NEW_RULES_ACTIVATED,
+    LARGE_WORK_INVALID_CHAIN = BTCK_WARNING_LARGE_WORK_INVALID_CHAIN,
+}
+
+impl From<Warning> for btck_Warning {
+    fn from(warning: Warning) -> btck_Warning {
+        warning as btck_Warning
+    }
+}
+
+#[repr(u8)]
+pub enum ScriptVerifyStatus {
+    OK = BTCK_SCRIPT_VERIFY_STATUS_OK,
+    ERROR_INVALID_FLAGS_COMBINATION = BTCK_SCRIPT_VERIFY_STATUS_INVALID_FLAGS_COMBINATION,
+    SPENT_OUTPUTS_REQUIRED = BTCK_SCRIPT_VERIFY_STATUS_SPENT_OUTPUTS_REQUIRED,
+}
+
+impl From<ScriptVerifyStatus> for btck_ScriptVerifyStatus {
+    fn from(status: ScriptVerifyStatus) -> btck_ScriptVerifyStatus {
+        status as btck_ScriptVerifyStatus
+    }
+}
+
+#[repr(u32)]
+pub enum btck_ScriptVerificationFlags {
+    NONE = BTCK_SCRIPT_VERIFICATION_FLAGS_NONE,
+    P2SH = BTCK_SCRIPT_VERIFICATION_FLAGS_P2SH,
+    DERSIG = BTCK_SCRIPT_VERIFICATION_FLAGS_DERSIG,
+    NULLDUMMY = BTCK_SCRIPT_VERIFICATION_FLAGS_NULLDUMMY,
+    CHECKLOCKTIMEVERIFY = BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKLOCKTIMEVERIFY,
+    CHECKSEQUENCEVERIFY = BTCK_SCRIPT_VERIFICATION_FLAGS_CHECKSEQUENCEVERIFY,
+    WITNESS = BTCK_SCRIPT_VERIFICATION_FLAGS_WITNESS,
+    TAPROOT = BTCK_SCRIPT_VERIFICATION_FLAGS_TAPROOT,
+    ALL = BTCK_SCRIPT_VERIFICATION_FLAGS_ALL
 }
