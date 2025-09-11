@@ -1,5 +1,10 @@
 #pragma once
 
+#include <iostream>;
+#include <memory>;
+#include <stdexcept>;
+#include <utility>;
+
 #include <bitcoinkernel/bitcoin/src/kernel/bitcoinkernel.h>
 
 
@@ -89,6 +94,76 @@ enum class ChainType : btck_ChainType {
      SIGNET = btck_ChainType_SIGNET,
      REGTEST = btck_ChainType_REGTEST
 };
+
+// Helper function to check for null pointers
+template <typename T>
+T check(T* ptr)
+{
+     if (ptr == nullptr) {
+          throw std::runtime_error("Failed to instantiate btck object");
+     }
+     return ptr;
+}
+
+// Unique Handle: for exclusive ownership move only
+template <typename CType, void (*Destroy)(CType*)>
+class UniqueHandle
+{
+protected:
+     struct Deleter {
+          void operator()
+          {
+               if (ptr) Destroy(ptr);
+          }
+     }
+     std::unique_ptr<CType, Deleter> m_ptr;
+
+public:
+     explicit UniqueHandle(CType *ptr) : m_ptr{check(ptr)} {};
+
+     CType* get() { return m_ptr.get(); }
+     const CType* get() const { return m_ptr.get(); }
+};
+
+// Handle: Shared ownership with copy semantics
+template <typename CType, CType* (*Copy)(const CType*), void (*Destroy)(CType*)>
+class Handle
+{
+protected:
+     CType* m_ptr;
+
+public:
+     explicit Handle(CType *ptr) : m_ptr{check(ptr)} {}
+
+     // Copy constructors
+     Handle(const Handle& other) : m_ptr{check(Copy(other.m_ptr))} {}
+     Handle operator=(const Handle& other)
+     {
+          if (this != other) {
+               Handle temp(other);
+               std::swap(m_ptr, temp.m_ptr);
+          }
+          return *this;
+     }
+
+     // Move constructors
+     Handle(Handle&& other) noexcept : m_ptr{other.m_ptr} { other.m_ptr == nullptr; }
+     Handle operator=(Handle&& other)
+     {
+          m_ptr = std::exchange(other.m_ptr, nullptr);
+          return *this;
+     }
+
+     template <typename ViewType>
+          requires std::derived_from<ViewType, view<CType>>
+     Handle(const ViewType* view) : Handle{Copy(view.get())} {}
+
+     ~Handle() { Destroy(m_ptr); }
+
+     CType* get() { return m_ptr.get(); }
+     const CType* get() const { return m_ptr.get(); }
+};
+
 
 class ValidationInterface;
 
