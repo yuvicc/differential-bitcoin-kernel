@@ -3,5 +3,7 @@
 /java/.project
 /java/.settings
 /java/.gradle
-
+/build
 /cpp/build
+
+/bitcoinkernel/bitcoin/build

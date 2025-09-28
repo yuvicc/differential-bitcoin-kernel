@@ -4,7 +4,7 @@ project(BitcoinKernelTest)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(BITCOIN_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/bitcoinkernel/build")
+set(BITCOIN_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/bitcoinkernel/bitcoin/build")
 set(BITCOIN_LIB_DIR "${BITCOIN_BUILD_DIR}/lib")
 set(BITCOIN_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/bitcoinkernel/bitcoin/src")
 

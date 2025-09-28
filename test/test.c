@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdbool.h>
-#include "../bitcoinkernel/bitcoin/src/kernel/bitcoinkernel.h";
+#include "../bitcoinkernel/bitcoin/src/kernel/bitcoinkernel.h"
+#include <stdlib.h>
 
 /**
  * Testing all the features of Bitcoin Kernel C API in C.
@@ -51,11 +52,11 @@ bool script_verification()
     btck_ScriptPubkey* script_pubkey = btck_script_pubkey_create(script, sizeof(script));
     if(script_pubkey == NULL) return false;
 
-    btck_ScriptVerifyStatus* status = btck_ScriptVerifyStatus_SCRIPT_VERIFY_OK;
+    btck_ScriptVerifyStatus status = btck_ScriptVerifyStatus_SCRIPT_VERIFY_OK;
     int64_t amount = 88480;
 
     btck_TransactionOutput* transactionOutput = btck_transaction_output_create(script_pubkey, amount);
-    const btck_TransactionOutput output_ = transactionOutput;
+    const btck_TransactionOutput* output_ = transactionOutput;
 
     int result = btck_script_pubkey_verify(
         script_pubkey, 
@@ -160,7 +161,7 @@ bool process_block()
     if(block == NULL) return false;
 
     int new_block = 1;
-    int res = btck_chainstate_manager_process_block(chainman, block, new_block);
+    int res = btck_chainstate_manager_process_block(chainman, block, &new_block);
 
     btck_block_destroy(block);
     btck_chainstate_manager_destroy(chainman);
@@ -171,5 +172,5 @@ bool process_block()
  
 
 int main() {
-
+    return 0;
 }
