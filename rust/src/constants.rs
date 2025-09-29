@@ -77,6 +77,3 @@ pub const BTCK_CHAIN_TYPE_TESTNET: btck_ChainType = 1;
 pub const BTCK_CHAIN_TYPE_TESTNET4: btck_ChainType = 2;
 pub const BTCK_CHAIN_TYPE_SIGNET: btck_ChainType = 3;
 pub const BTCK_CHAIN_TYPE_REGTEST:btck_ChainType = 4;
-
-
-
