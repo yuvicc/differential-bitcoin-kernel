@@ -164,6 +164,18 @@ public:
      const CType* get() const { return m_ptr.get(); }
 };
 
+template <typename CType>
+class View
+{
+protected:
+     const CType* m_ptr;
+
+public:
+     explicit View(const CType* ptr) : m_ptr{check(ptr)} {};
+
+     const CType* get() const { return m_ptr; }
+};
+
 
 class ValidationInterface;
 

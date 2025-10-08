@@ -8,6 +8,7 @@ pub mod block;
 pub mod transaction;
 pub mod chain;
 pub mod constants;
+pub mod logger;
 
 /// Verify a transaction input against its output script
 pub fn verify_script(
