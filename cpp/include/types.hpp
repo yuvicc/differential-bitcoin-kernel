@@ -7,8 +7,6 @@
 
 #include <bitcoinkernel/bitcoin/src/kernel/bitcoinkernel.h>
 
-
-
 namespace btck {
 
 // Enum class for Synchronization State
