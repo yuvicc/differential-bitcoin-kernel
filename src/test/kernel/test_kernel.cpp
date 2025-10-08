@@ -715,7 +715,7 @@ void chainman_reindex_test(TestDirectory& test_directory)
     check_equal(next_block_data, second_block_data);
 
     auto second_hash{second_index.GetHash()};
-    auto another_second_index{chainman->GetBlockTreeEntry(second_hash.get())};
+    auto another_second_index{chainman->GetBlockTreeEntry(second_hash)};
     auto another_second_height{another_second_index.GetHeight()};
     auto second_block_hash{second_block.GetHash()};
     check_equal(second_block_hash.ToBytes(), second_hash.ToBytes());

@@ -687,11 +687,11 @@ class Block : public Handle<btck_Block, btck_block_copy, btck_block_destroy>
 {
 public:
     Block(const std::span<const std::byte> raw_block)
-        : Handle{check(btck_block_create(raw_block.data(), raw_block.size()))}
+        : Handle{btck_block_create(raw_block.data(), raw_block.size())}
     {
     }
 
-    Block(btck_Block* block) : Handle{check(block)} {}
+    Block(btck_Block* block) : Handle{block} {}
 
     size_t CountTransactions() const
     {
@@ -764,7 +764,7 @@ class BlockTreeEntry : public View<btck_BlockTreeEntry>
 {
 public:
     BlockTreeEntry(const btck_BlockTreeEntry* entry)
-        : View{check(entry)}
+        : View{entry}
     {
     }
 
@@ -861,7 +861,7 @@ public:
 class ContextOptions : UniqueHandle<btck_ContextOptions, btck_context_options_destroy>
 {
 public:
-    ContextOptions() : UniqueHandle{check(btck_context_options_create())} {}
+    ContextOptions() : UniqueHandle{btck_context_options_create()} {}
 
     void SetChainParams(ChainParams& chain_params)
     {
@@ -917,7 +917,7 @@ public:
         : Handle{btck_context_create(opts.get())} {}
 
     Context()
-        : Handle{check(btck_context_create(ContextOptions{}.get()))} {}
+        : Handle{btck_context_create(ContextOptions{}.get())} {}
 
     bool interrupt()
     {
@@ -931,7 +931,7 @@ class ChainstateManagerOptions : UniqueHandle<btck_ChainstateManagerOptions, btc
 {
 public:
     ChainstateManagerOptions(const Context& context, const std::string& data_dir, const std::string& blocks_dir)
-        : UniqueHandle{check(btck_chainstate_manager_options_create(context.get(), data_dir.c_str(), data_dir.length(), blocks_dir.c_str(), blocks_dir.length()))}
+        : UniqueHandle{btck_chainstate_manager_options_create(context.get(), data_dir.c_str(), data_dir.length(), blocks_dir.c_str(), blocks_dir.length())}
     {
     }
 
@@ -1028,7 +1028,7 @@ public:
 class Coin : public Handle<btck_Coin, btck_coin_copy, btck_coin_destroy>, public CoinApi<Coin>
 {
 public:
-    Coin(btck_Coin* coin) : Handle{check(coin)} {}
+    Coin(btck_Coin* coin) : Handle{coin} {}
 
     Coin(const CoinView& view) : Handle{view} {}
 };
@@ -1072,7 +1072,7 @@ class TransactionSpentOutputs : public Handle<btck_TransactionSpentOutputs, btck
                                 public TransactionSpentOutputsApi<TransactionSpentOutputs>
 {
 public:
-    TransactionSpentOutputs(btck_TransactionSpentOutputs* transaction_spent_outputs) : Handle{check(transaction_spent_outputs)} {}
+    TransactionSpentOutputs(btck_TransactionSpentOutputs* transaction_spent_outputs) : Handle{transaction_spent_outputs} {}
 
     TransactionSpentOutputs(const TransactionSpentOutputsView& view) : Handle{view} {}
 };
@@ -1081,7 +1081,7 @@ class BlockSpentOutputs : public Handle<btck_BlockSpentOutputs, btck_block_spent
 {
 public:
     BlockSpentOutputs(btck_BlockSpentOutputs* block_spent_outputs)
-        : Handle{check(block_spent_outputs)}
+        : Handle{block_spent_outputs}
     {
     }
 
@@ -1105,7 +1105,7 @@ class ChainMan : UniqueHandle<btck_ChainstateManager, btck_chainstate_manager_de
 {
 public:
     ChainMan(const Context& context, const ChainstateManagerOptions& chainman_opts)
-        : UniqueHandle{check(btck_chainstate_manager_create(chainman_opts.get()))}
+        : UniqueHandle{btck_chainstate_manager_create(chainman_opts.get())}
     {
     }
 
@@ -1136,9 +1136,9 @@ public:
         return ChainView{btck_chainstate_manager_get_active_chain(get())};
     }
 
-    BlockTreeEntry GetBlockTreeEntry(const btck_BlockHash* block_hash) const
+    BlockTreeEntry GetBlockTreeEntry(const BlockHash& block_hash) const
     {
-        return btck_chainstate_manager_get_block_tree_entry_by_hash(get(), block_hash);
+        return btck_chainstate_manager_get_block_tree_entry_by_hash(get(), block_hash.get());
     }
 
     std::optional<Block> ReadBlock(const BlockTreeEntry& entry) const

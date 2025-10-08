@@ -61,7 +61,7 @@ static const kernel::Context btck_context_static{};
 
 namespace {
 
-bool is_valid_flag_combination(unsigned int flags)
+bool is_valid_flag_combination(script_verify_flags flags)
 {
     if (flags & SCRIPT_VERIFY_CLEANSTACK && ~flags & (SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS)) return false;
     if (flags & SCRIPT_VERIFY_WITNESS && ~flags & SCRIPT_VERIFY_P2SH) return false;
@@ -621,7 +621,7 @@ int btck_script_pubkey_verify(const btck_ScriptPubkey* script_pubkey,
     // Assert that all specified flags are part of the interface before continuing
     assert((flags & ~btck_ScriptVerificationFlags_ALL) == 0);
 
-    if (!is_valid_flag_combination(flags)) {
+    if (!is_valid_flag_combination(script_verify_flags::from_int(flags))) {
         if (status) *status = btck_ScriptVerifyStatus_ERROR_INVALID_FLAGS_COMBINATION;
         return 0;
     }
@@ -652,7 +652,7 @@ int btck_script_pubkey_verify(const btck_ScriptPubkey* script_pubkey,
     bool result = VerifyScript(tx.vin[input_index].scriptSig,
                                btck_ScriptPubkey::get(script_pubkey),
                                &tx.vin[input_index].scriptWitness,
-                               flags,
+                               script_verify_flags::from_int(flags),
                                TransactionSignatureChecker(&tx, input_index, amount, txdata, MissingDataBehavior::FAIL),
                                nullptr);
     return result ? 1 : 0;
