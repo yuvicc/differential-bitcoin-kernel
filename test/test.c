@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdbool.h>
-#include "../bitcoinkernel/bitcoin/src/kernel/bitcoinkernel.h"
+#include "../../bitcoin/src/kernel/bitcoinkernel.h"
 #include <stdlib.h>
 
 /**
@@ -53,6 +53,7 @@ bool script_verification()
     if(script_pubkey == NULL) return false;
 
     btck_ScriptVerifyStatus status = btck_ScriptVerifyStatus_SCRIPT_VERIFY_OK;
+    btck_ScriptError script_error = btck_ScriptError_OK;
     int64_t amount = 88480;
 
     btck_TransactionOutput* transactionOutput = btck_transaction_output_create(script_pubkey, amount);
@@ -66,12 +67,14 @@ bool script_verification()
         1, 
         0, 
         btck_ScriptVerificationFlags_ALL, 
-        &status);
+        &status,
+        &script_error);
 
     btck_transaction_output_destroy(transactionOutput);
     btck_transaction_destroy(transaction);
     btck_script_pubkey_destroy(script_pubkey);
 
+    if (script_error != btck_ScriptError_OK) return false;
     return (result && (status == btck_ScriptVerifyStatus_SCRIPT_VERIFY_OK));
 }
 
