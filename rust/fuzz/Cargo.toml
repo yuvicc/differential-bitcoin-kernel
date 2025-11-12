@@ -1,0 +1,43 @@
+[package]
+name = "rust-bitcoinkernel-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1.1", features = ["derive"] }
+
+[dependencies.bitcoinkernel]
+path = ".."
+
+[[bin]]
+name = "chainman_process_block"
+path = "fuzz_targets/chainman_process_block.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "script_verify"
+path = "fuzz_targets/script_verify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "block_roundtrip"
+path = "fuzz_targets/block_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "transaction_roundtrip"
+path = "fuzz_targets/transaction_roundtrip.rs"
+test = false
+doc = false
+bench = false
